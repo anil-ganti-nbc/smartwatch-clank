@@ -15,6 +15,14 @@ services:
     restart: "no"
     environment:
       SMARTWATCH_CLANK_DB: /app/data/smartwatch-clank.sqlite3
+      # Without this, socket.gethostname() (a random container ID for every
+      # one-shot --rm container) becomes the "host_id" the app's own soak
+      # tracker compares against the previous run -- misrecording a false
+      # host-migration event on every single scheduled cycle. Set explicitly
+      # to the actual stable host, matching this app's own documented
+      # migration model (README.md: "Set SMARTWATCH_CLANK_HOST_ID to a
+      # stable, unique host label if the system hostname is not suitable").
+      SMARTWATCH_CLANK_HOST_ID: ${SMARTWATCH_CLANK_HOST_ID:-hetzner-clank-fleet-01}
     volumes:
       - smartwatch_clank_data:/app/data
     command: ["run", "--mode", "production"]
