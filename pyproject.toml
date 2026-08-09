@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smartwatch-clank"
+version = "0.2.3"
+description = "Primary-source change intelligence for connected watches"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Proprietary"}
+authors = [{name = "Notebookcheck"}]
+dependencies = []
+
+[project.scripts]
+smartwatch-clank = "smartwatch_clank.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

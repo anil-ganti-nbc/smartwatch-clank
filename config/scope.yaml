@@ -1,0 +1,11 @@
+{
+  "manufacturers": [
+    "samsung", "google", "apple", "garmin", "oneplus", "xiaomi",
+    "redmi", "huawei", "amazfit", "oppo", "nothing", "cmf",
+    "mobvoi", "ticwatch"
+  ],
+  "included_device_types": ["smartwatch", "wear_os_watch", "watchos_watch", "connected_gps_sports_watch"],
+  "review_device_types": ["fitness_band", "hybrid_watch", "unknown"],
+  "excluded_device_types": ["analogue_watch", "digital_watch", "mechanical_watch", "smart_ring", "headphones", "vr_hardware"]
+}
+

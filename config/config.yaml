@@ -1,0 +1,14 @@
+{
+  "database": "var/smartwatch-clank.sqlite3",
+  "runner": {
+    "unexpected_zero_is_failure": true,
+    "catalogue_warning_ratio": 0.75,
+    "catalogue_failure_ratio": 0.50
+  },
+  "production_allowlist": [
+    "samsung_product_catalogue",
+    "samsung_support_in",
+    "samsung_support_gb",
+    "samsung_support_de"
+  ]
+}
