@@ -1,10 +1,28 @@
 from __future__ import annotations
 
+import os
 import platform
 import sys
 from dataclasses import asdict, dataclass
 
 from . import __version__
+
+
+def _source_revision() -> str:
+    """Full Git SHA the running image was built from, baked in at build time.
+
+    Set via the Dockerfile's `GIT_REVISION` build arg ->
+    `SMARTWATCH_CLANK_SOURCE_REVISION` env var, never read from a `.git`
+    directory at runtime. Local/non-Docker runs report "unknown" rather than
+    a fabricated value. Pattern proven on OEM Radar / Chinese Tech Wire /
+    Feature Phone Clank.
+    """
+    return os.environ.get("SMARTWATCH_CLANK_SOURCE_REVISION", "unknown")
+
+
+def _source_revision_short() -> str:
+    revision = _source_revision()
+    return revision if revision == "unknown" else revision[:12]
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,10 +34,15 @@ class RuntimeIdentity:
     stage: int
     live_collectors_enabled: bool
     notifications_enabled: bool
+    source_revision: str
+    source_revision_short: str
 
 
 def identity() -> dict[str, object]:
-    return asdict(RuntimeIdentity("smartwatch-clank", __version__, sys.version.split()[0], platform.platform(), 2, True, False))
+    return asdict(RuntimeIdentity(
+        "smartwatch-clank", __version__, sys.version.split()[0], platform.platform(), 2, True, False,
+        _source_revision(), _source_revision_short(),
+    ))
 
 
 def health(store) -> dict[str, object]:
