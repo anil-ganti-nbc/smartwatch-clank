@@ -1,5 +1,7 @@
 # Smartwatch Clank
 
+> Status: Experimental / under construction
+
 Smartwatch Clank is an independently runnable intelligence collector for connected wrist-worn computing devices. It stores durable source observations, computes deterministic changes, and protects editorial alerts from broken collectors.
 
 Stage 2.2 enables controlled production observation for the Samsung product catalogue and independently isolated India/UK/Germany support collectors. Discord notifications remain disabled; the database and CLI are the soak observation surface.
