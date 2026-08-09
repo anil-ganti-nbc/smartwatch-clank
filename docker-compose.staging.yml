@@ -1,0 +1,24 @@
+# Smartwatch Clank — STAGING / SOAK ONLY. Experimental, actively developing.
+# No production compose file exists for this clank. Isolated named volume,
+# no ports published, no Docker socket mounted, restart disabled, one-shot
+# default command (run --mode production; the app's own RunLock prevents
+# overlap, no external lock needed).
+services:
+  smartwatch-clank:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GIT_REVISION: ${GIT_REVISION:-unknown}
+    image: smartwatch-clank:${IMAGE_TAG:-soak-local}
+    container_name: smartwatch-clank-soak
+    restart: "no"
+    environment:
+      SMARTWATCH_CLANK_DB: /app/data/smartwatch-clank.sqlite3
+    volumes:
+      - smartwatch_clank_data:/app/data
+    command: ["run", "--mode", "production"]
+
+volumes:
+  smartwatch_clank_data:
+    name: smartwatch_clank_staging_data
