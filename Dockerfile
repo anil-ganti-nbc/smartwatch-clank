@@ -33,7 +33,7 @@ COPY src ./src
 COPY config ./config
 COPY pyproject.toml README.md ./
 
-RUN mkdir -p /app/var \
+RUN mkdir -p /app/var /app/data \
     && chown -R clank:clank /app
 
 USER clank
