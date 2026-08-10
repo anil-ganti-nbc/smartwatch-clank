@@ -87,4 +87,64 @@ The single Windows task `Smartwatch Clank - Samsung Production Soak` invokes the
 .\scripts\uninstall_samsung_soak_task.ps1
 ```
 
+## Hetzner cloud deployment (2026-08-09)
+
+The Windows host retirement anticipated above has been bridged early: this
+project now also runs on a temporary Hetzner Linux host via Docker + cron,
+independently of the Windows Task Scheduler launcher.
+
+```
+image:              smartwatch-clank:<short-sha>  (currently f01accf)
+deployed revision:   f01accfeb0f326318044f4f55178cbc2f25f8502 (full SHA)
+persistent state:    named Docker volume smartwatch_clank_staging_data
+                     (fresh cloud baseline, NOT copied from the Windows database)
+cadence:             every 2 hours (`50 1-23/2 * * *` UTC) — same monitoring
+                     frequency as the Windows launcher above, converted from
+                     IST to UTC (the 30-minute IST offset cancels the 5:30
+                     UTC skew, landing on the hour)
+SMARTWATCH_CLANK_HOST_ID: hetzner-clank-fleet-01 (set explicitly — see below)
+```
+
+**Deliberately avoids `pip install .`**: `PROJECT_ROOT` in `paths.py` is
+computed via `Path(__file__).resolve().parents[2]`, which assumes the
+source-checkout layout. A real `pip install` would move the package into
+site-packages and break that math. The Docker image instead preserves the
+source-checkout layout under `/app` and runs via `python -m`, with no
+changes to `paths.py`/`configuration.py`.
+
+**Host-ID note**: this project's own host-migration design (described above)
+is exactly what made the Hetzner move safe — but it does mean
+`SMARTWATCH_CLANK_HOST_ID` must be set explicitly for a one-shot `--rm`
+Docker container. Left unset, `socket.gethostname()` returns a random
+container ID on every single scheduled run, which would misrecord a false
+`host_migration` event every cycle. Set to a stable label
+(`hetzner-clank-fleet-01`) in `docker-compose.staging.yml`; the one real
+transition this caused (from an initial ad-hoc container hostname to the
+stable label) is correctly recorded once in `soak_host_migrations`, not
+repeated on any subsequent run.
+
+Git-revision provenance is built in: `org.opencontainers.image.revision`
+(OCI label) and `identity`'s two new fields (`source_revision`,
+`source_revision_short`, additive on the existing `RuntimeIdentity`
+dataclass) both report the exact deployed commit SHA. Local/non-Docker runs
+report `"unknown"`.
+
+**Real-network validation**: 6+ genuine scheduled Hetzner cycles as of this
+writing, all `healthy: 4`, `failed: 0`, stable `394` cross-source
+reconciliation relationships, `0` false events on unchanged catalogue data
+(idempotency holds). Internal run-lock tested under a real deliberate
+overlap: a second invocation while one was active correctly returned
+`{"status": "BLOCKED", "error": "database run lock is held: ..."}` with full
+lock metadata (host, pid, token, acquired-at), while the first continued
+normally to completion.
+
+Nothing in this deployment is Hetzner-specific — the named volume, the
+`SMARTWATCH_CLANK_HOST_ID` mechanism (already part of this project's own
+design), and the Git-revision build-arg all transfer directly to a NAS or
+any other Linux/Docker host.
+
+This is the first cloud deployment for this clank — no previous image
+exists to roll back to yet; `.deployed-id` on the host drives which image
+tag the cron wrapper uses for the next revision change.
+
 Daily logs are written under `var/logs/soak` and retained for 30 days. SQLite history is never removed by log retention or task uninstallation. Task Scheduler ignores a duplicate scheduled instance; the platform-agnostic database lock remains authoritative for overlaps from any launcher.
