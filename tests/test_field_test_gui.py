@@ -29,8 +29,8 @@ def test_dashboard_renders_empty_and_populated_canonical_state(monkeypatch, tmp_
     config = load_runtime_config()
     with SQLiteStore(config.database): pass
     empty = render_dashboard(config.database, default_registry())
-    assert "Nothing recorded yet" in empty
-    assert "support presence is evidence" in empty
+    assert "No runs recorded yet" in empty
+    assert "support presence is model/region evidence" in empty.lower()
     with SQLiteStore(config.database) as store:
         store.connection.execute("INSERT INTO prelaunch_candidates(candidate_key,base_model,regional_sku,region,support_url,first_seen,last_seen,classification_evidence_json,state,matched_catalogue_json,catalogue_first_seen,onboarding_baseline) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", ("SM-L100","SM-L100","SM-L100N","India","https://example.invalid/support","2026-01-01","2026-01-02","[\"official_support_sitemap\"]","GLOBAL_UNKNOWN_SUPPORT_MODEL",None,None,0))
         store.connection.commit()
