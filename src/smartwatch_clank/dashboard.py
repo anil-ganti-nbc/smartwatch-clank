@@ -1,68 +1,58 @@
-"""Local, read-only field-test dashboard for canonical Smartwatch state."""
+"""Local, read-only desktop field-test dashboard for canonical Smartwatch state."""
 from __future__ import annotations
 
-import html
-import json
+import html, json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
 from .configuration import load_runtime_config
 from .core.store import SQLiteStore
 from .operations import candidates_report, health_report, recent_discoveries, reconciliation_report
 from .runtime_bridge import identity
 
+LABELS = {"samsung_product_catalogue": ("Samsung Product Catalogue", "CATALOGUE"), "samsung_support_de": ("Samsung Support Germany", "SUPPORT"), "samsung_support_gb": ("Samsung Support UK", "SUPPORT"), "samsung_support_in": ("Samsung Support India", "SUPPORT")}
 
-def _esc(value: object) -> str:
-    return html.escape("" if value is None else str(value))
-
-
-def _link(url: str | None) -> str:
-    return f'<a href="{_esc(url)}" target="_blank" rel="noreferrer">source</a>' if url else "—"
-
-
-def _table(headers: tuple[str, ...], rows: list[tuple[object, ...]]) -> str:
-    head = "".join(f"<th>{_esc(item)}</th>" for item in headers)
-    body = "".join("<tr>" + "".join(f"<td>{item}</td>" for item in row) + "</tr>" for row in rows)
-    return f"<table><tr>{head}</tr>{body}</table>" if rows else "<p class=muted>Nothing recorded yet.</p>"
-
+def e(value: object) -> str: return html.escape("" if value is None else str(value))
+def link(url: str | None) -> str: return f'<a href="{e(url)}" title="{e(url)}" target="_blank" rel="noreferrer">Open source ↗</a>' if url else "—"
+def badge(value: str) -> str:
+    kind = {"HEALTHY":"good", "WARNING":"warn", "FAILED":"bad", "NEVER_RUN":"neutral"}.get(value,"neutral")
+    return f'<span class="badge {kind}">{e(value.replace("_", " "))}</span>'
+def table(headers, rows, title, detail):
+    if not rows: return f'<div class=empty><b>{e(title)}</b><span>{e(detail)}</span></div>'
+    return '<div class=scroll><table><thead><tr>'+''.join(f'<th>{e(x)}</th>' for x in headers)+'</tr></thead><tbody>'+''.join('<tr>'+''.join(f'<td>{x}</td>' for x in row)+'</tr>' for row in rows)+'</tbody></table></div>'
 
 def render_dashboard(database, registry) -> str:
+    config=load_runtime_config()
     with SQLiteStore(database) as store:
-        health = health_report(store, registry, load_runtime_config())
-        discoveries = recent_discoveries(store, 25)["discoveries"]
-        candidates = candidates_report(store, limit=100)["candidates"]
-        reconciliation = reconciliation_report(store, limit=100)["relationships"]
-        runs = store.connection.execute("SELECT collector,finished_at,healthy,observation_count,warning,error FROM runs ORDER BY id DESC LIMIT 20").fetchall()
-    ident = identity()
-    health_rows = [( _esc(row["collector"]), _esc(row["status"]), _esc(row["last_run"]), _esc(row["warning"] or row["error"] or "—")) for row in health["collectors"]]
-    run_rows = [(_esc(r["collector"]), _esc(r["finished_at"]), "healthy" if r["healthy"] else "degraded", _esc(r["observation_count"]), _esc(r["warning"] or r["error"] or "—")) for r in runs]
-    candidate_rows = [(_esc(item["base_model"] or "—"), _esc(item["regional_sku"]), _esc(item["region"]), _esc(item["state"]), _esc(item["first_seen"]), _link(item["support_url"])) for item in candidates]
-    discovery_rows = [(_esc(item["base_model"] or item["identity"]), _esc(item["regional_sku"] or "—"), _esc(item["region"] or "—"), _esc(item["type"]), _esc(item["first_seen"]), _link(item["source_url"])) for item in discoveries]
-    relationship_rows = [(_esc(item.get("base_model") or "—"), _esc(item.get("regional_sku") or "—"), _esc(item.get("region") or "—"), _esc(item.get("relationship") or "—"), _link(item.get("source_url") or item.get("support_url"))) for item in reconciliation]
-    return f'''<!doctype html><title>Smartwatch Clank</title><style>
-body{{font:14px system-ui;margin:0;background:#10161f;color:#e7edf7}}header{{padding:14px 22px;background:#182333}}main{{max-width:1200px;margin:auto;padding:20px}}.card{{background:#182333;border:1px solid #2d3b50;border-radius:8px;padding:15px;margin:14px 0}}.muted{{color:#9aa9bd}}.warn{{color:#f3bb63}}table{{width:100%;border-collapse:collapse}}td,th{{padding:7px;text-align:left;border-bottom:1px solid #2d3b50}}a{{color:#82b7ff}}</style>
-<header><b>Smartwatch Clank · Field Test</b> <span class=muted>revision {_esc(ident['source_revision_short'])} · v{_esc(ident['version'])} · DB {_esc(database)}</span></header><main>
-<div class=card><h2>Overall health: {_esc(health['status'])}</h2><p class=warn><b>Interpretation guard:</b> Samsung support presence is evidence of model/region existence, not proof of current retail availability. Catalogue absence is not automatically discontinuation.</p></div>
-<div class=card><h2>Source health</h2>{_table(('Source','Status','Latest run','Warning / error'), health_rows)}</div>
-<div class=card><h2>Latest runs</h2>{_table(('Source','Finished','State','Observations','Warning / error'), run_rows)}</div>
-<div class=card><h2>Recent watch discoveries</h2>{_table(('Canonical model','Regional SKU','Region','Evidence event','Observed','Link'), discovery_rows)}</div>
-<div class=card><h2>Samsung support candidates</h2>{_table(('Base model','Regional SKU','Region','Evidence state','First seen','Support'), candidate_rows)}</div>
-<div class=card><h2>Catalogue / support reconciliation</h2>{_table(('Base model','Regional SKU','Region','Relationship','Evidence'), relationship_rows)}</div>
-</main>'''
+        health=health_report(store,registry,config); discoveries=recent_discoveries(store,25)["discoveries"]
+        candidates=candidates_report(store,limit=100)["candidates"]; relations=reconciliation_report(store,limit=100)["relationships"]
+        runs=store.connection.execute("SELECT collector,finished_at,healthy,observation_count,warning,error FROM runs ORDER BY id DESC LIMIT 20").fetchall()
+    ident=identity(); never=sum(x["status"]=="NEVER_RUN" for x in health["collectors"]); revision = "local development build" if ident["source_revision_short"] == "unknown" else ident["source_revision_short"]
+    sources=[]
+    for x in health["collectors"]:
+        name,typ=LABELS.get(x["collector"],(x["collector"],"SOURCE")); sources.append((f'<b>{e(name)}</b><small>{e(x["collector"])}</small>',f'<span class="type {typ.lower()}">{typ}</span>',badge(x["status"]),e(x["last_run"] or "—"),e(x["warning"] or x["error"] or "No runs recorded")))
+    runrows=[(f'<b>{e(LABELS.get(x["collector"],(x["collector"],))[0])}</b>',e(x["finished_at"]),badge("HEALTHY" if x["healthy"] else "FAILED"),e(x["observation_count"]),e(x["warning"] or x["error"] or "—")) for x in runs]
+    discrows=[(e(x["base_model"] or x["identity"]),e(x["regional_sku"] or "—"),e(x["region"] or "—"),e(x["type"]),e(x["first_seen"]),link(x["source_url"])) for x in discoveries]
+    candrows=[(e(x["base_model"] or "—"),e(x["regional_sku"]),e(x["region"]),e(x["state"]),e(x["first_seen"]),link(x["support_url"])) for x in candidates]
+    relrows=[(e(x.get("base_model") or "—"),e(x.get("regional_sku") or "—"),e(x.get("region") or "—"),e(x.get("relationship") or "—"),link(x.get("source_url") or x.get("support_url"))) for x in relations]
+    return f'''<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Smartwatch Clank</title><style>
+:root{{--bg:#08111d;--nav:#0c1727;--card:#111f31;--line:#26374d;--text:#e9eef7;--muted:#9baac0;--blue:#67aeff;--green:#62dd89;--amber:#f7bd48;--red:#ff716c}}*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font:13px/1.42 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}}a{{color:#79c0ff;text-decoration:none}}.app{{min-height:100vh;display:grid;grid-template-columns:215px 1fr;grid-template-rows:72px 1fr}}header{{grid-column:1/3;display:flex;align-items:center;gap:18px;padding:0 22px;background:#0b1524;border-bottom:1px solid var(--line)}}.brand{{font-size:17px;font-weight:750;white-space:nowrap}}.brand small,small,.muted{{display:block;color:var(--muted);font-size:11px;font-weight:400}}.pill{{color:#d1baff;background:#25235c;border:1px solid #4842a2;border-radius:5px;padding:5px 8px;font-size:10px;font-weight:750}}.provenance{{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:460px}}.spacer{{flex:1}}button{{background:#30358e;color:#fff;border:0;border-radius:6px;padding:9px 13px;font-weight:700}}aside{{background:var(--nav);border-right:1px solid var(--line);padding:13px}}.navtitle{{font-size:10px;color:var(--muted);letter-spacing:.07em;margin:14px 8px 5px}}.nav{{display:block;color:#d6dfed;padding:8px 10px;border-radius:5px;margin:2px 0}}.nav.active{{background:#302d80;color:#fff;font-weight:700}}main{{width:100%;max-width:1600px;padding:18px 22px;margin:auto}}.summary{{display:grid;grid-template-columns:1.5fr repeat(4,1fr);gap:11px}}.metric,.card{{background:var(--card);border:1px solid var(--line);border-radius:8px}}.metric{{min-height:111px;padding:14px}}.label{{font-size:10px;letter-spacing:.05em;color:var(--muted);font-weight:750}}.number{{font-size:28px;font-weight:780;margin:4px 0}}.health{{border-color:#916a26;background:#231f16}}.health .number{{font-size:20px;color:var(--amber)}}.guard{{font-size:12px;color:#e0d6be;margin:6px 0}}.grid{{display:grid;grid-template-columns:minmax(0,3fr) minmax(260px,1fr);gap:14px;margin-top:14px}}.three,.guide{{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:14px}}.card{{padding:14px}}h2{{font-size:15px;margin:0 0 12px}}h2 a{{float:right;font-size:12px;font-weight:500}}table{{width:100%;border-collapse:collapse;font-size:12px}}th{{text-align:left;color:var(--muted);font-size:10px;letter-spacing:.05em;padding:8px 7px;border-bottom:1px solid var(--line)}}td{{padding:9px 7px;border-bottom:1px solid #213047;vertical-align:top}}tr:last-child td{{border:0}}.badge,.type{{display:inline-block;padding:3px 6px;border-radius:5px;font-size:10px;font-weight:750;letter-spacing:.03em}}.good{{background:#123a28;color:var(--green)}}.warn{{background:#4a3712;color:var(--amber)}}.bad{{background:#4b2328;color:#ff9790}}.neutral{{background:#29364a;color:#cbd6e6}}.catalogue{{background:#163d6f;color:#6fb6ff}}.support{{background:#174a2d;color:#68df90}}.empty{{min-height:118px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:5px;text-align:center;color:var(--muted)}}.empty b{{color:#dce5f2}}.quick a{{display:block;color:var(--text);background:#142337;border:1px solid #283951;border-radius:6px;padding:10px;margin:8px 0}}.guide div{{border:1px solid var(--line);background:#142237;border-radius:6px;padding:11px}}.guide b{{display:block;color:var(--blue);margin-bottom:5px}}.footer{{color:var(--muted);font-size:11px;text-align:center;margin:16px}}@media(max-width:1000px){{.app{{grid-template-columns:1fr;grid-template-rows:72px auto 1fr}}header{{grid-column:1}}aside{{display:flex;overflow:auto;border-right:0;border-bottom:1px solid var(--line);padding:7px}}.navtitle{{display:none}}.nav{{white-space:nowrap}}.summary,.grid,.three,.guide{{grid-template-columns:1fr}}.provenance{{max-width:180px}}}}</style></head><body><div class=app>
+<header><div class=brand>⌚ Smartwatch Clank<small>Samsung smartwatch intelligence</small></div><span class=pill>FIELD TEST MODE</span><span class=provenance title="{e(str(database.resolve()))}">Revision: {e(revision)}　|　Database: {e(database.name)}</span><span class=spacer></span><span class=provenance>Last updated: local view</span><button onclick="location.reload()">↻ Refresh</button></header>
+<aside><a class="nav active" href=#overview>⌂　Overview</a><div class=navtitle>DISCOVERY</div><a class=nav href=#discoveries>◉　Recent Discoveries</a><a class=nav href=#candidates>♧　Support Candidates</a><a class=nav href=#reconciliation>▦　Regional Matrix</a><div class=navtitle>SOURCES</div><a class=nav href=#source-health>♜　Source Health</a><a class=nav href=#runs>◷　Run History</a><div class=navtitle>INSIGHTS</div><a class=nav href=#reconciliation>↔　Reconciliations</a><a class=nav href=#candidates>⌕　Watch Details</a><div class=navtitle>SYSTEM</div><a class=nav href=#about>ⓘ　About</a></aside><main id=overview>
+<section class=summary><div class="metric health"><div class=label>OVERALL HEALTH</div><div class=number>{e(health['status'])}</div><p class=guard><b>Interpretation guard:</b> Support presence is model/region evidence, not proof of current retail availability. Catalogue absence is not discontinuation.</p></div><div class=metric><div class=label>SOURCES</div><div class=number>{len(health['collectors'])}</div><span class=muted>Total configured</span></div><div class=metric><div class=label>NEVER RUN</div><div class=number>{never}</div><span class=muted>Awaiting observation</span></div><div class=metric><div class=label>RECENT DISCOVERIES</div><div class=number>{len(discoveries)}</div><span class=muted>Canonical events</span></div><div class=metric><div class=label>SUPPORT CANDIDATES</div><div class=number>{len(candidates)}</div><span class=muted>Requires reconciliation</span></div></section>
+<section class=grid><div class=card id=source-health><h2>Source Health <a href=#runs>View history →</a></h2>{table(('Source','Type','Status','Latest run','Warning / error'),sources,'No runs recorded yet','Collector runs will appear here once executed.')}</div><div class="card quick"><h2>Quick Actions</h2><a href=#source-health>View Source Health<small>Inspect canonical collector status</small></a><a href=#runs>View Run History<small>Inspect recorded local runs</small></a><a href=#reconciliation>Inspect Reconciliations<small>Read-only regional relationships</small></a><a href=#about>Local State Details<small>View field-test provenance</small></a></div></section>
+<section class=three><div class=card id=runs><h2>Latest Runs</h2>{table(('Source','Finished','State','Observations','Warning'),runrows,'No runs recorded yet','Collector runs will appear here once executed.')}</div><div class=card id=discoveries><h2>Recent Watch Discoveries</h2>{table(('Model','SKU','Region','Evidence','Observed','Source'),discrows,'No discoveries yet','New canonical watch discoveries will appear here.')}</div><div class=card id=candidates><h2>Support Candidates</h2>{table(('Base model','SKU','Region','State','First seen','Source'),candrows,'No support candidates yet','Potential regional support models will appear here.')}</div></section>
+<section class=card id=reconciliation style="margin-top:14px"><h2>Catalogue / Support Reconciliation · Regional Matrix</h2>{table(('Base model','Regional SKU','Region','Relationship','Evidence'),relrows,'No reconciliation rows yet','Catalogue and regional support relationships will appear after canonical runs.')}</section><section class="card guide" id=about style="margin-top:14px"><div><b>Support evidence</b>Regional support presence indicates model/region existence; it is not retail availability.</div><div><b>Catalogue evidence</b>Catalogue absence can be lag or regional scope; it is not discontinuation.</div><div><b>Owner role</b>Use direct source evidence and reconciliation, not assumptions.</div></section><div class=footer>Field Test Mode · Local data only · No data leaves this machine</div></main></div></body></html>'''
 
-
-def serve(host: str = "127.0.0.1", port: int = 8300) -> ThreadingHTTPServer:
-    config = load_runtime_config()
+def serve(host: str="127.0.0.1", port: int=8300) -> ThreadingHTTPServer:
+    config=load_runtime_config()
     from .collectors import default_registry
-    registry = default_registry()
+    registry=default_registry()
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            if urlparse(self.path).path not in {"/", "/healthz"}:
-                self.send_error(404); return
-            if urlparse(self.path).path == "/healthz":
-                body = json.dumps({"status": "ok", "database": str(config.database.resolve())}).encode()
-                self.send_response(200); self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(body); return
-            body = render_dashboard(config.database, registry).encode()
-            self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.end_headers(); self.wfile.write(body)
-        def log_message(self, *_): pass
-    return ThreadingHTTPServer((host, port), Handler)
+            if urlparse(self.path).path not in {"/","/healthz"}: self.send_error(404); return
+            if urlparse(self.path).path=="/healthz":
+                body=json.dumps({"status":"ok","database":str(config.database.resolve())}).encode(); self.send_response(200); self.send_header("Content-Type","application/json"); self.end_headers(); self.wfile.write(body); return
+            body=render_dashboard(config.database,registry).encode(); self.send_response(200); self.send_header("Content-Type","text/html; charset=utf-8"); self.end_headers(); self.wfile.write(body)
+        def log_message(self,*_): pass
+    return ThreadingHTTPServer((host,port),Handler)
