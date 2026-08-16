@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(os.environ.get("SMARTWATCH_CLANK_CONFIG_ROOT", Path(__file__).resolve().parents[2]))
 
 
 def default_database_path() -> Path:
@@ -14,4 +14,3 @@ def default_database_path() -> Path:
 
 def config_path(name: str) -> Path:
     return PROJECT_ROOT / "config" / name
-
