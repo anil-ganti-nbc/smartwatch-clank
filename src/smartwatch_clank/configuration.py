@@ -45,7 +45,19 @@ def load_runtime_config() -> RuntimeConfig:
         data = _merge(data, json.loads(local_path.read_text(encoding="utf-8")))
         sources.append(local_path)
     runner = data.get("runner", {})
-    database = Path(os.environ.get("SMARTWATCH_CLANK_DB", data.get("database", "var/smartwatch-clank.sqlite3")))
+    # Native field-test builds use this explicit application-data boundary.
+    # Existing server deployments retain SMARTWATCH_CLANK_DB or the tracked
+    # repository-relative default exactly as before when it is unset.
+    data_dir = os.environ.get("SMARTWATCH_CLANK_DATA_DIR")
+    configured_database = os.environ.get("SMARTWATCH_CLANK_DB")
+    if configured_database:
+        database = Path(configured_database)
+    elif data_dir:
+        directory = Path(data_dir).expanduser().resolve()
+        directory.mkdir(parents=True, exist_ok=True)
+        database = directory / "smartwatch-clank.sqlite3"
+    else:
+        database = Path(data.get("database", "var/smartwatch-clank.sqlite3"))
     if not database.is_absolute():
         database = PROJECT_ROOT / database
     return RuntimeConfig(

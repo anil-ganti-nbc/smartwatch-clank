@@ -26,7 +26,10 @@ class OperationalTests(unittest.TestCase):
         config = load_runtime_config()
         provenance = config.provenance()
         self.assertTrue(provenance["repository_defaults"].endswith("config.yaml"))
-        self.assertTrue(provenance["database"].endswith("var\\smartwatch-clank.sqlite3"))
+        self.assertEqual(
+            Path(provenance["database"]).parts[-2:],
+            ("var", "smartwatch-clank.sqlite3"),
+        )
         self.assertIn("production_allowlist", provenance)
 
     def test_collector_level_scope_enables_only_allowlisted_production_collectors(self):
