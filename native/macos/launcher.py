@@ -1,19 +1,30 @@
 from __future__ import annotations
-import os, socket, sys, threading, webbrowser
+import os, socket, sys, threading, webbrowser, time, urllib.request
 from pathlib import Path
 
 def main() -> None:
-    data = Path(os.environ.setdefault("SMARTWATCH_CLANK_DATA_DIR", str(Path.home() / "Library" / "Application Support" / "Smartwatch Clank"))).expanduser().resolve()
+    data = Path(os.environ.get("SMARTWATCH_FIELD_TEST_HOME") or (Path.home() / "Library" / "Application Support" / "Smartwatch Clank")).expanduser().resolve()
     data.mkdir(parents=True, exist_ok=True)
+    os.environ["SMARTWATCH_CLANK_DATA_DIR"] = str(data)
+    os.environ.pop("SMARTWATCH_CLANK_DB", None)
     # PyInstaller places bundled config under its resource root; source mode
     # continues to use the repository root without this override.
     if hasattr(sys, "_MEIPASS"):
-        app_resources = Path(sys.executable).resolve().parents[3] / "Smartwatch Clank" / "_internal"
-        os.environ.setdefault("SMARTWATCH_CLANK_CONFIG_ROOT", str(app_resources if app_resources.exists() else sys._MEIPASS))
+        os.environ["SMARTWATCH_CLANK_CONFIG_ROOT"] = str(Path(sys._MEIPASS).resolve())
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0)); port = sock.getsockname()[1]
+    from smartwatch_clank.configuration import load_runtime_config
+    from smartwatch_clank.collectors import default_registry
+    from smartwatch_clank.local_collection import LocalCollectionController
     from smartwatch_clank.dashboard import serve
-    server = serve(port=port)
-    threading.Timer(.25, webbrowser.open, args=(f"http://127.0.0.1:{port}/",)).start()
+    controller = LocalCollectionController(load_runtime_config(), default_registry())
+    server = serve(port=port, controller=controller)
+    url=f"http://127.0.0.1:{port}/"
+    def ready():
+        for _ in range(200):
+            try:
+                if urllib.request.urlopen(url+"healthz",timeout=1).status==200: webbrowser.open(url); return
+            except Exception: time.sleep(.15)
+    threading.Thread(target=ready,daemon=True).start()
     server.serve_forever()
 if __name__ == "__main__": main()

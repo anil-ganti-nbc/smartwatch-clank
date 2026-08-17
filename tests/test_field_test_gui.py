@@ -36,3 +36,26 @@ def test_dashboard_renders_empty_and_populated_canonical_state(monkeypatch, tmp_
         store.connection.commit()
     populated = render_dashboard(config.database, default_registry())
     assert "SM-L100N" in populated and "example.invalid/support" in populated
+
+
+def test_field_test_dashboard_has_four_manual_sources(monkeypatch, tmp_path):
+    monkeypatch.setenv("SMARTWATCH_CLANK_DATA_DIR", str(tmp_path / "state"))
+    config = load_runtime_config()
+    with SQLiteStore(config.database): pass
+    page = render_dashboard(config.database, default_registry(), controller=object())
+    assert "Collect now" in page
+    for source in ("samsung_product_catalogue", "samsung_support_de", "samsung_support_gb", "samsung_support_in"):
+        assert source in page
+
+
+def test_selected_runner_rejects_non_production_source(tmp_path):
+    from smartwatch_clank.core.runner import Runner
+    config = load_runtime_config()
+    registry = default_registry()
+    with SQLiteStore(tmp_path / "state.sqlite3") as store:
+        try:
+            Runner(registry, store, config.runner).run_selected(("not-real",), config.production_allowlist)
+        except KeyError:
+            pass
+        else:
+            raise AssertionError("unknown source was accepted")
