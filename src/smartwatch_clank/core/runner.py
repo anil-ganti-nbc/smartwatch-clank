@@ -32,6 +32,18 @@ class Runner:
         return [self._run_one(collector, run_metadata or {})
                 for collector in self.registry.selected(mode, production_allowlist)]
 
+    def run_selected(self, names: tuple[str, ...], production_allowlist: tuple[str, ...],
+                     run_metadata: dict | None = None) -> list[RunOutcome]:
+        """Run explicit production sources now; scheduling policy remains external."""
+        allowed = set(production_allowlist)
+        collectors = []
+        for name in names:
+            collector = self.registry.get(name)
+            if collector.tier is not CollectorTier.PRODUCTION or name not in allowed:
+                raise ValueError(f"collector is not production-enabled: {name}")
+            collectors.append(collector)
+        return [self._run_one(collector, run_metadata or {}) for collector in collectors]
+
     def _run_one(self, collector, run_metadata: dict) -> RunOutcome:
         started = utc_now()
         attempted_count = 0
