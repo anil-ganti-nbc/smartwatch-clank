@@ -13,6 +13,7 @@ from .core.registry import CollectorRegistry
 from .core.runner import Runner, RunProvenance
 from .core.soak import prepare_soak_cycle
 from .core.store import SQLiteStore
+from .intelligence.news import persist_news_evidence
 from .intelligence.samsung import persist_samsung_reconciliation, reconcile_samsung
 from .operations import (
     candidates_report, health_report, recent_discoveries, reconciliation_report, scope_report, soak_summary,
@@ -93,11 +94,17 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
                     products = store.latest_healthy_observations(("samsung_product_catalogue",))
                     supports = store.latest_healthy_observations(support_names)
                     reconciliation = persist_samsung_reconciliation(store, reconcile_samsung(products, supports))
+                official_news_evidence = {}
+                for name in registered_names:
+                    if name.endswith("_official_news") and store.has_healthy_run(name):
+                        observations = store.latest_healthy_observations((name,))
+                        official_news_evidence[name] = persist_news_evidence(store, observations)
                 _print({
                     "mode": args.mode, "database": str(database), "lock_enabled": not args.no_lock,
                     "cycle": run_metadata,
                     "collectors_run": len(outcomes), "healthy": sum(item.healthy for item in outcomes),
                     "failed": sum(not item.healthy for item in outcomes), "samsung_reconciliation": reconciliation,
+                    "official_news_evidence": official_news_evidence,
                     "outcomes": [{
                         "collector": item.collector, "healthy": item.healthy, "baseline": item.baseline,
                         "observations": item.observation_count, "discoveries": item.discovery_count,
