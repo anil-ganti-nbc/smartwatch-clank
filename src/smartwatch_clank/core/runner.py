@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from .diff import diff_catalogues
 from .health import CatalogueHealthError, assess_catalogue
-from .models import CollectorTier, HealthRecord, RunOutcome, utc_now
+from .models import CollectorTier, HealthRecord, RunOutcome, RunScope, utc_now
 from .registry import CollectorRegistry
 from .store import SQLiteStore
 
@@ -44,10 +44,10 @@ class Runner:
         self.config = config or RunnerConfig()
         self.provenance = provenance or RunProvenance()
 
-    def run(self, mode: CollectorTier, production_allowlist: tuple[str, ...] = (),
+    def run(self, scope: RunScope, production_allowlist: tuple[str, ...] = (),
             run_metadata: dict | None = None) -> list[RunOutcome]:
         return [self._run_one(collector, run_metadata or {})
-                for collector in self.registry.selected(mode, production_allowlist)]
+                for collector in self.registry.selected(scope, production_allowlist)]
 
     def run_selected(self, names: tuple[str, ...], production_allowlist: tuple[str, ...],
                      run_metadata: dict | None = None) -> list[RunOutcome]:

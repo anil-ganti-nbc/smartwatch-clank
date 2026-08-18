@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from smartwatch_clank.cli import main
 from smartwatch_clank.configuration import load_runtime_config
-from smartwatch_clank.core.models import CollectorTier
+from smartwatch_clank.core.models import CollectorTier, RunScope
 from smartwatch_clank.core.registry import CollectorRegistry
 from smartwatch_clank.core.runner import Runner
 from smartwatch_clank.core.store import SQLiteStore
@@ -50,7 +50,7 @@ class OperationalTests(unittest.TestCase):
             database = Path(directory) / "health.sqlite3"
             with SQLiteStore(database) as store:
                 self.assertEqual(health_report(store, registry, config)["collectors"][0]["status"], "NEVER_RUN")
-                Runner(registry, store).run(CollectorTier.PRODUCTION, ("dummy",))
+                Runner(registry, store).run(RunScope.PRODUCTION, ("dummy",))
                 self.assertEqual(health_report(store, registry, config)["collectors"][0]["status"], "HEALTHY")
                 self.assertEqual(soak_summary(store)["total_runs"], 1)
             output = io.StringIO()
@@ -80,9 +80,9 @@ class OperationalTests(unittest.TestCase):
         registry.register(collector)
         with tempfile.TemporaryDirectory() as directory, SQLiteStore(Path(directory) / "d.sqlite3") as store:
             runner = Runner(registry, store)
-            runner.run(CollectorTier.EXPERIMENTAL)
+            runner.run(RunScope.ALL)
             collector.items = (observation("dummy", "watch-1", price="120", currency="INR"),)
-            runner.run(CollectorTier.EXPERIMENTAL)
+            runner.run(RunScope.ALL)
             result = recent_discoveries(store)
             self.assertEqual(result["discoveries"][0]["type"], "PRICE_CHANGE")
             self.assertNotIn("discount", json.dumps(result).lower())

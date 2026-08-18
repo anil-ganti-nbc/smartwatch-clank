@@ -9,5 +9,10 @@
 # .deployed-id and invokes `docker compose run --rm`. Adjust the path if
 # this Clank's staging directory differs.
 #
+# Deliberately NOT the same :50-past-odd-hours schedule as the existing
+# production cron entry -- this drives EXPERIMENTAL-tier collectors only
+# (see RunScope in core/models.py), a separate schedule from production
+# by design, offset here to avoid the two landing in the same minute.
+#
 # m h  dom mon dow  command
-50 1-23/2 * * *  cd /home/deploy/staging/smartwatch-clank && ./deploy/run.sh >> var/logs/soak-cron.log 2>&1
+12 0-22/2 * * *  cd /home/deploy/staging/smartwatch-clank && ./deploy/run.sh >> var/logs/soak-cron.log 2>&1

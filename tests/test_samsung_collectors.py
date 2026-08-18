@@ -7,7 +7,7 @@ from pathlib import Path
 from smartwatch_clank.collectors.samsung.common import SamsungRegion
 from smartwatch_clank.collectors.samsung.product_catalogue import SamsungProductCatalogueCollector
 from smartwatch_clank.collectors.samsung.support import SamsungSupportCollector
-from smartwatch_clank.core.models import CollectorTier
+from smartwatch_clank.core.models import RunScope
 from smartwatch_clank.core.registry import CollectorRegistry
 from smartwatch_clank.core.runner import Runner
 from smartwatch_clank.core.store import SQLiteStore
@@ -67,17 +67,17 @@ class SamsungProductTests(unittest.TestCase):
                 registry = CollectorRegistry()
                 product = self.collector()
                 registry.register(product)
-                first = Runner(registry, store).run(CollectorTier.EXPERIMENTAL)[0]
+                first = Runner(registry, store).run(RunScope.ALL)[0]
                 self.assertTrue(first.baseline)
                 self.assertEqual(first.discovery_count, 0)
                 changed = fixture("product_catalogue.html").replace(
                     "  ]\n}", '    ,{"@type":"ListItem","item":{"@type":"Product","url":"https://www.samsung.com/in/watches/galaxy-watch/galaxy-watch-new-sm-l900nzkains/","name":"Galaxy Watch New"}}\n  ]\n}'
                 )
                 product.client.responses[INDIA.catalogue_url] = changed
-                second = Runner(registry, store).run(CollectorTier.EXPERIMENTAL)[0]
+                second = Runner(registry, store).run(RunScope.ALL)[0]
                 self.assertEqual(second.discovery_count, 1)
                 product.client.responses[INDIA.catalogue_url] = "<html></html>"
-                failed = Runner(registry, store).run(CollectorTier.EXPERIMENTAL)[0]
+                failed = Runner(registry, store).run(RunScope.ALL)[0]
                 self.assertFalse(failed.healthy)
                 self.assertEqual(store.counts()["discoveries"], 1)
             finally:
@@ -132,7 +132,7 @@ class SamsungSupportTests(unittest.TestCase):
         registry.register(SamsungSupportCollector(UK, FixtureClient(self.regional_responses(UK)), max_workers=1))
         registry.register(SamsungSupportCollector(GERMANY, FixtureClient(self.regional_responses(GERMANY)), max_workers=1))
         with tempfile.TemporaryDirectory() as directory, SQLiteStore(Path(directory) / "regional.sqlite3") as store:
-            outcomes = Runner(registry, store).run(CollectorTier.EXPERIMENTAL)
+            outcomes = Runner(registry, store).run(RunScope.ALL)
             self.assertEqual([(o.collector, o.baseline, o.observation_count) for o in outcomes], [
                 ("samsung_support_de", True, 3), ("samsung_support_gb", True, 3)
             ])
@@ -143,7 +143,7 @@ class SamsungSupportTests(unittest.TestCase):
         broken = FixtureClient(self.regional_responses(UK), {UK.support_sitemap_url})
         registry.register(SamsungSupportCollector(UK, broken, max_workers=1))
         with tempfile.TemporaryDirectory() as directory, SQLiteStore(Path(directory) / "isolated.sqlite3") as store:
-            outcomes = Runner(registry, store).run(CollectorTier.EXPERIMENTAL)
+            outcomes = Runner(registry, store).run(RunScope.ALL)
             self.assertEqual([(o.collector, o.healthy) for o in outcomes], [
                 ("samsung_support_gb", False), ("samsung_support_in", True)
             ])
@@ -155,11 +155,11 @@ class SamsungSupportTests(unittest.TestCase):
         registry = CollectorRegistry()
         registry.register(collector)
         with tempfile.TemporaryDirectory() as directory, SQLiteStore(Path(directory) / "collapse.sqlite3") as store:
-            Runner(registry, store).run(CollectorTier.EXPERIMENTAL)
+            Runner(registry, store).run(RunScope.ALL)
             responses[INDIA.support_sitemap_url] = (
                 "<urlset><url><loc>https://www.samsung.com/in/support/model/SM-L340NZKAINS/</loc></url></urlset>"
             )
-            outcome = Runner(registry, store).run(CollectorTier.EXPERIMENTAL)[0]
+            outcome = Runner(registry, store).run(RunScope.ALL)[0]
             self.assertFalse(outcome.healthy)
             self.assertEqual(len(store.last_healthy_catalogue("samsung_support_in")), 3)
 

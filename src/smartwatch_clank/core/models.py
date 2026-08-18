@@ -15,6 +15,32 @@ class CollectorTier(StrEnum):
     EXPERIMENTAL = "experimental"
 
 
+class RunScope(StrEnum):
+    """Which collectors a run should select -- distinct from CollectorTier.
+
+    A collector's `tier` is a property of the collector. `RunScope` is a
+    property of one invocation. They deliberately don't mirror each other
+    symmetrically:
+
+    - PRODUCTION requires a collector to be BOTH `tier == PRODUCTION` AND
+      named in the configured production allowlist -- two independent
+      gates, both required.
+    - EXPERIMENTAL selects `tier == EXPERIMENTAL` only, and never consults
+      the production allowlist. A production-tier collector never runs
+      under this scope, regardless of what the allowlist contains.
+    - ALL is the explicit diagnostic/"everything" escape hatch. It replaces
+      the old, accidental behavior where EXPERIMENTAL meant "every
+      registered collector" -- that conflated "not production" with
+      "run absolutely everything," which silently ran production-tier
+      Samsung collectors through the experimental soak alongside the
+      production cron.
+    """
+
+    PRODUCTION = "production"
+    EXPERIMENTAL = "experimental"
+    ALL = "all"
+
+
 class SourceClass(StrEnum):
     """The lifecycle stage a piece of evidence came from.
 
