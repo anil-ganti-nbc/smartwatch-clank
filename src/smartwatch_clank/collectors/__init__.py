@@ -2,13 +2,8 @@
 
 from smartwatch_clank.core.registry import CollectorRegistry
 
-from .samsung import SamsungProductCatalogueCollector, SamsungSupportCollector
-from .samsung.common import SUPPORT_REGIONS
+from .registry import build_registry
 
 
 def default_registry() -> CollectorRegistry:
-    registry = CollectorRegistry()
-    registry.register(SamsungProductCatalogueCollector())
-    for region in SUPPORT_REGIONS:
-        registry.register(SamsungSupportCollector(region))
-    return registry
+    return build_registry()

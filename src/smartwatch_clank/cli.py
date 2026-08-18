@@ -10,7 +10,7 @@ from .configuration import load_runtime_config
 from .core.lock import RunLock, RunLockError
 from .core.models import CollectorTier
 from .core.registry import CollectorRegistry
-from .core.runner import Runner
+from .core.runner import Runner, RunProvenance
 from .core.soak import prepare_soak_cycle
 from .core.store import SQLiteStore
 from .intelligence.samsung import persist_samsung_reconciliation, reconcile_samsung
@@ -76,7 +76,13 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
         try:
             with lock_context, SQLiteStore(database) as store:
                 run_metadata = prepare_soak_cycle(store, mode=args.mode)
-                outcomes = Runner(registry, store, config.runner).run(
+                runtime_identity = identity()
+                provenance = RunProvenance(
+                    app_version=runtime_identity["version"],
+                    config_fingerprint=config.config_fingerprint,
+                    git_revision=runtime_identity["source_revision"],
+                )
+                outcomes = Runner(registry, store, config.runner, provenance).run(
                     CollectorTier(args.mode), production_allowlist=config.production_allowlist,
                     run_metadata=run_metadata,
                 )

@@ -1,0 +1,20 @@
+# systemd timer — matches the established 2-hour soak cadence
+# (spec: avoid unnecessary changes to cadence; inspect existing fleet
+# timers before picking the exact minute offset to avoid collisions).
+#
+# Overlap is prevented by:
+#   1) RandomizedDelaySec
+#   2) the store's own RunLock (<database>.lock, single-instance run lock)
+
+[Unit]
+Description=Smartwatch Clank experimental soak, every 2 hours
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=2h
+RandomizedDelaySec=90
+Persistent=true
+Unit=smartwatch-clank-soak.service
+
+[Install]
+WantedBy=timers.target

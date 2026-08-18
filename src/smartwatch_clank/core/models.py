@@ -15,6 +15,22 @@ class CollectorTier(StrEnum):
     EXPERIMENTAL = "experimental"
 
 
+class SourceClass(StrEnum):
+    """The lifecycle stage a piece of evidence came from.
+
+    Values equal the free-text strings already stored in
+    `Observation.source_kind` (`"product_catalogue"`, `"support"`) so this
+    enum slots in without touching existing comparisons or stored JSON.
+    """
+
+    PRODUCT_CATALOGUE = "product_catalogue"
+    SUPPORT = "support"
+    OFFICIAL_NEWS = "official_news"
+    SOFTWARE_UPDATE = "software_update"
+    COMPANION_APP = "companion_app"
+    CERTIFICATION = "certification"
+
+
 class Confidence(StrEnum):
     HIGH = "HIGH"
     MEDIUM = "MEDIUM"
@@ -77,6 +93,8 @@ class Observation:
     source_url: str
     observed_at: datetime = field(default_factory=utc_now)
     source_kind: str | None = None
+    source_class: str | None = None
+    oem: str | None = None
     region: str | None = None
     product_family: str | None = None
     family_identity: str | None = None

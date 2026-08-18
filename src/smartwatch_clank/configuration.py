@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ class RuntimeConfig:
     production_allowlist: tuple[str, ...]
     database: Path
     sources: tuple[Path, ...]
+    config_fingerprint: str = ""
 
     def provenance(self) -> dict[str, object]:
         return {
@@ -33,7 +35,19 @@ class RuntimeConfig:
             "local_override": str(self.sources[1]) if len(self.sources) > 1 else None,
             "production_allowlist": list(self.production_allowlist),
             "database": str(self.database.resolve()),
+            "config_fingerprint": self.config_fingerprint,
         }
+
+
+def _fingerprint(*payloads: dict[str, Any]) -> str:
+    """Stable hash of loaded config content, independent of key order.
+
+    Changes whenever `config.yaml`/`scope.yaml` content changes; stable
+    otherwise. Used as run provenance so a discovery can be traced back to
+    the exact configuration that produced it (spec: config fingerprint).
+    """
+    normalized = json.dumps(payloads, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:16]
 
 
 def load_runtime_config() -> RuntimeConfig:
@@ -60,6 +74,8 @@ def load_runtime_config() -> RuntimeConfig:
         database = Path(data.get("database", "var/smartwatch-clank.sqlite3"))
     if not database.is_absolute():
         database = PROJECT_ROOT / database
+    scope_path = config_path("scope.yaml")
+    scope_data = json.loads(scope_path.read_text(encoding="utf-8")) if scope_path.exists() else {}
     return RuntimeConfig(
         RunnerConfig(
             unexpected_zero_is_failure=runner.get("unexpected_zero_is_failure", True),
@@ -67,4 +83,5 @@ def load_runtime_config() -> RuntimeConfig:
             catalogue_failure_ratio=runner.get("catalogue_failure_ratio", 0.50),
         ),
         tuple(data.get("production_allowlist", ())), database, tuple(sources),
+        _fingerprint(data, scope_data),
     )
