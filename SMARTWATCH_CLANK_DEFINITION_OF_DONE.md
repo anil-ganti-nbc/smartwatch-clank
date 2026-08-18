@@ -50,3 +50,11 @@ the canonical suite must pass. Owner UX validation remains **OWNER FIELD TEST
   production allowlist entries). Full report:
   `docs/expansion-stage-a-report.md`. Not yet deployed to Hetzner — see that
   report's deployment-status section.
+- **Expansion Stage B (official-news collectors, 2026-08-18):** four new
+  EXPERIMENTAL collectors (`samsung_official_news`, `google_official_news`,
+  `garmin_official_news`, `apple_official_news`) against real, live
+  Samsung Newsroom/Google Pixel blog/Garmin Newsroom/Apple Newsroom RSS
+  and Atom feeds, deterministic relevance classification, and generic
+  evidence persistence — production allowlist still unchanged (Samsung
+  only). Full report: `docs/expansion-stage-b-report.md`. Branches from
+  Stage A's branch; neither is merged to `main` yet.

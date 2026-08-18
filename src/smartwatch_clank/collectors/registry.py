@@ -13,14 +13,31 @@ from collections.abc import Callable
 
 from smartwatch_clank.core.registry import CollectorRegistry
 
+from .apple.official_news import AppleOfficialNewsCollector
+from .garmin.official_news import GarminOfficialNewsCollector
+from .google.official_news import GoogleOfficialNewsCollector
 from .samsung import SamsungProductCatalogueCollector, SamsungSupportCollector
 from .samsung.common import SUPPORT_REGIONS
+from .samsung.official_news import SamsungOfficialNewsCollector
 
 
 def _register_samsung(registry: CollectorRegistry) -> None:
     registry.register(SamsungProductCatalogueCollector())
     for region in SUPPORT_REGIONS:
         registry.register(SamsungSupportCollector(region))
+    registry.register(SamsungOfficialNewsCollector())
+
+
+def _register_google(registry: CollectorRegistry) -> None:
+    registry.register(GoogleOfficialNewsCollector())
+
+
+def _register_garmin(registry: CollectorRegistry) -> None:
+    registry.register(GarminOfficialNewsCollector())
+
+
+def _register_apple(registry: CollectorRegistry) -> None:
+    registry.register(AppleOfficialNewsCollector())
 
 
 # (oem, register) pairs. Order determines registration order only; the
@@ -28,6 +45,9 @@ def _register_samsung(registry: CollectorRegistry) -> None:
 # name).
 OEM_REGISTRATIONS: tuple[tuple[str, Callable[[CollectorRegistry], None]], ...] = (
     ("samsung", _register_samsung),
+    ("google", _register_google),
+    ("garmin", _register_garmin),
+    ("apple", _register_apple),
 )
 
 
