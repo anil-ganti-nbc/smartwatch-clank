@@ -70,3 +70,26 @@ the canonical suite must pass. Owner UX validation remains **OWNER FIELD TEST
   now tier-only and never consults the allowlist; `ALL` is the new explicit
   diagnostic escape hatch. Production Samsung scope and cadence are
   unchanged throughout. Full report: `docs/run-scope-correction-2026-08-19.md`.
+- **Expansion Stage C (Garmin + Amazfit/Zepp + COROS, 2026-08-19):**
+  reprioritised (Google/Pixel Watch deferred). Six new `EXPERIMENTAL`
+  collectors: `garmin_catalogue` (full first-party product-sitemap crawl,
+  since no watch-scoped index exists), `amazfit_catalogue` +
+  `amazfit_official_news` (Shopify storefront `products.json` + blog Atom
+  feed), `coros_support` + `coros_updates` + `coros_official_news` (COROS's
+  public Zendesk Help Center JSON API serves as its primary discovery
+  surface, since `coros.com` itself is a client-rendered SPA with no
+  structured catalogue). Added a typed source-health exception taxonomy
+  (`SourceHostBlockedError`/`SourceRateLimitedError`/`ParserFailureError`)
+  so a run's stored error says *why* a collector failed, not just a bare
+  message. Live baseline testing (not just fixture tests) found and fixed
+  four real bugs: a single HTTP 404 on a stale Garmin sitemap entry was
+  crashing the entire 4,324-page crawl; an overly permissive
+  "no signal → ambiguous" fallback was retaining 2,000+ unrelated Garmin
+  products (nautical charts, GPS antennas) as catalogue candidates; a
+  registered-trademark symbol in real Garmin product names ("Approach®
+  S70") was silently breaking watch-vs-non-watch classification for the
+  entire Approach line; and COROS accessory release-notes (Heart Rate
+  Monitor, POD 2 footpod) were leaking into device-update events. Samsung
+  production, its cadence, and the 4 existing official-news collectors are
+  completely unchanged; nothing was added to `production_allowlist`. Full
+  report: `docs/stage-c-report.md`.

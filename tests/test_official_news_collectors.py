@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
+from smartwatch_clank.collectors.amazfit.official_news import AmazfitOfficialNewsCollector, FEED_URL as AMAZFIT_FEED_URL
 from smartwatch_clank.collectors.apple.official_news import AppleOfficialNewsCollector, FEED_URL as APPLE_FEED_URL
 from smartwatch_clank.collectors.garmin.official_news import FEED_URL as GARMIN_FEED_URL, GarminOfficialNewsCollector
 from smartwatch_clank.collectors.google.official_news import FEED_URL as GOOGLE_FEED_URL, GoogleOfficialNewsCollector
@@ -60,6 +61,21 @@ class OfficialNewsCollectorTests(unittest.TestCase):
         by_title = {item.title: item for item in result.observations}
         self.assertEqual(by_title["Apple introduces Apple Watch Series 12 with new health features"].classification_state, "SMARTWATCH_RELEVANT")
         self.assertEqual(by_title["Apple opens Advanced Manufacturing Center in Houston"].classification_state, "NOT_SMARTWATCH_RELEVANT")
+
+    def test_amazfit_official_news_excludes_helio_strap_and_classifies_launch(self):
+        collector = AmazfitOfficialNewsCollector(FixtureClient({AMAZFIT_FEED_URL: fixture("amazfit.xml")}))
+        result = collector.run()
+        by_title = {item.title: item for item in result.observations}
+        self.assertEqual(
+            by_title["Amazfit Introduces Active Max: Bigger, Brighter, and Built for Maximum Performance"].classification_state,
+            "SMARTWATCH_RELEVANT",
+        )
+        self.assertEqual(by_title["Introducing the Helio Strap Pro"].classification_state, "NOT_SMARTWATCH_RELEVANT")
+        self.assertEqual(
+            by_title["Zepp Health's Amazfit Adds Athlete Ambassadors to Team Amazfit Roster"].classification_state,
+            "NOT_SMARTWATCH_RELEVANT",
+        )
+        self.assertTrue(all(item.oem == "amazfit" for item in result.observations))
 
     def test_identities_are_stable_and_unique_across_runs(self):
         client = FixtureClient({SAMSUNG_FEED_URL: fixture("samsung.xml")})

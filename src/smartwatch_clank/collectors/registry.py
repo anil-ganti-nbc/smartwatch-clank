@@ -13,7 +13,13 @@ from collections.abc import Callable
 
 from smartwatch_clank.core.registry import CollectorRegistry
 
+from .amazfit.catalogue import AmazfitCatalogueCollector
+from .amazfit.official_news import AmazfitOfficialNewsCollector
 from .apple.official_news import AppleOfficialNewsCollector
+from .coros.official_news import CorosOfficialNewsCollector
+from .coros.support import CorosSupportCollector
+from .coros.updates import CorosUpdatesCollector
+from .garmin.catalogue import GarminCatalogueCollector
 from .garmin.official_news import GarminOfficialNewsCollector
 from .google.official_news import GoogleOfficialNewsCollector
 from .samsung import SamsungProductCatalogueCollector, SamsungSupportCollector
@@ -34,10 +40,22 @@ def _register_google(registry: CollectorRegistry) -> None:
 
 def _register_garmin(registry: CollectorRegistry) -> None:
     registry.register(GarminOfficialNewsCollector())
+    registry.register(GarminCatalogueCollector())
 
 
 def _register_apple(registry: CollectorRegistry) -> None:
     registry.register(AppleOfficialNewsCollector())
+
+
+def _register_amazfit(registry: CollectorRegistry) -> None:
+    registry.register(AmazfitOfficialNewsCollector())
+    registry.register(AmazfitCatalogueCollector())
+
+
+def _register_coros(registry: CollectorRegistry) -> None:
+    registry.register(CorosSupportCollector())
+    registry.register(CorosUpdatesCollector())
+    registry.register(CorosOfficialNewsCollector())
 
 
 # (oem, register) pairs. Order determines registration order only; the
@@ -48,6 +66,8 @@ OEM_REGISTRATIONS: tuple[tuple[str, Callable[[CollectorRegistry], None]], ...] =
     ("google", _register_google),
     ("garmin", _register_garmin),
     ("apple", _register_apple),
+    ("amazfit", _register_amazfit),
+    ("coros", _register_coros),
 )
 
 

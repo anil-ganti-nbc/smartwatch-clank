@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 
 from .diff import diff_catalogues
-from .health import CatalogueHealthError, assess_catalogue
+from .health import CatalogueHealthError, SourceHealthError, assess_catalogue
 from .models import CollectorTier, HealthRecord, RunOutcome, RunScope, utc_now
 from .registry import CollectorRegistry
 from .store import SQLiteStore
@@ -100,7 +100,7 @@ class Runner:
         except Exception as exc:
             finished = utc_now()
             detail = f"{type(exc).__name__}: {exc}"
-            if not isinstance(exc, (CatalogueHealthError, ValueError)):
+            if not isinstance(exc, (CatalogueHealthError, SourceHealthError, ValueError)):
                 detail += "\n" + "".join(traceback.format_exception(exc)).strip()
             metadata = {"attempted_observation_count": attempted_count}
             if run_metadata:

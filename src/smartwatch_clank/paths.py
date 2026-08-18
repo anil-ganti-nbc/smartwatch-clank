@@ -14,3 +14,16 @@ def default_database_path() -> Path:
 
 def config_path(name: str) -> Path:
     return PROJECT_ROOT / "config" / name
+
+
+def default_garmin_catalogue_cache_path() -> Path:
+    """Persistent classified-product-ID cache, next to whatever DB is configured.
+
+    Garmin's product sitemap has no watch-scoped subset (see docs/stage-c-report.md)
+    -- classifying all ~4,300 entries costs one full crawl. Caching stable
+    classification decisions (not transient fetch errors) here means only new
+    sitemap entries get fetched on subsequent runs. Lives beside the database
+    path so it moves with persistent state (e.g. SMARTWATCH_CLANK_DB pointing
+    outside the disposable repo checkout on Hetzner), not inside the repo.
+    """
+    return default_database_path().parent / "garmin_catalogue_cache.json"

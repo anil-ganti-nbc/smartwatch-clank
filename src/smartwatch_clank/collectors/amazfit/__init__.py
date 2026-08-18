@@ -1,0 +1,1 @@
+"""Amazfit/Zepp collectors."""

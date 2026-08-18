@@ -1,0 +1,114 @@
+{
+  "products": [
+    {
+      "id": 9111111111111,
+      "title": "Balance Ultra",
+      "handle": "balance-ultra",
+      "vendor": "Amazfit",
+      "product_type": "Smartwatch",
+      "tags": ["AVAILABLE", "BACKINSTOCK"],
+      "variants": [
+        {"sku": "W2553GL2N", "option1": "Titanium", "option2": "46mm", "option3": null, "price": "599.99", "available": true}
+      ]
+    },
+    {
+      "id": 9111111111112,
+      "title": "T-Rex 3 Pro",
+      "handle": "t-rex-3-pro",
+      "vendor": "Amazfit",
+      "product_type": "Smartwatch",
+      "tags": ["AVAILABLE"],
+      "variants": [
+        {"sku": "W2600GL1N", "option1": "Black", "option2": "48mm", "option3": null, "price": "279.99", "available": true}
+      ]
+    },
+    {
+      "id": 9111111111113,
+      "title": "Helio Strap Pro",
+      "handle": "helio-strap-pro",
+      "vendor": "Amazfit",
+      "product_type": "Smartwatch",
+      "tags": ["AVAILABLE", "BACKINSTOCK"],
+      "variants": [
+        {"sku": "B2671GL1N", "option1": "Default Title", "option2": null, "option3": null, "price": "199.99", "available": true}
+      ]
+    },
+    {
+      "id": 9111111111114,
+      "title": "Band 7",
+      "handle": "band-7",
+      "vendor": "Amazfit",
+      "product_type": "Smartwatch",
+      "tags": ["AVAILABLE"],
+      "variants": [
+        {"sku": "A2225GL1N", "option1": "Default Title", "option2": null, "option3": null, "price": "49.99", "available": true}
+      ]
+    },
+    {
+      "id": 9111111111115,
+      "title": "Sport Silicone Straps (20/22mm)",
+      "handle": "sport-silicone-straps",
+      "vendor": "Amazfit",
+      "product_type": "Accessories",
+      "tags": ["AVAILABLE"],
+      "variants": [
+        {"sku": "STRAP-2022", "option1": "Black", "option2": null, "option3": null, "price": "19.99", "available": true}
+      ]
+    },
+    {
+      "id": 9111111111116,
+      "title": "Amazfit T-Rex 3 + Helio Strap",
+      "handle": "t-rex-3-helio-strap-bundle",
+      "vendor": "Amazfit",
+      "product_type": "",
+      "tags": ["AVAILABLE"],
+      "variants": [
+        {"sku": "BUNDLE-1", "option1": "Default Title", "option2": null, "option3": null, "price": "349.99", "available": true}
+      ]
+    },
+    {
+      "id": 9111111111117,
+      "title": "Amazfit Gift Card",
+      "handle": "gift-card",
+      "vendor": "Amazfit",
+      "product_type": "",
+      "tags": [],
+      "variants": [
+        {"sku": "GIFT-50", "option1": "$50", "option2": null, "option3": null, "price": "50.00", "available": true}
+      ]
+    },
+    {
+      "id": 9111111111118,
+      "title": "T-Rex 3 Trade-In",
+      "handle": "t-rex-3-trade-in",
+      "vendor": "Amazfit",
+      "product_type": "",
+      "tags": ["AVAILABLE"],
+      "variants": [
+        {"sku": "TRADEIN-TREX3", "option1": "Default Title", "option2": null, "option3": null, "price": "199.99", "available": true}
+      ]
+    },
+    {
+      "id": 9111111111119,
+      "title": "Falcon Ultra",
+      "handle": "falcon-ultra",
+      "vendor": "Amazfit",
+      "product_type": "",
+      "tags": ["AVAILABLE"],
+      "variants": [
+        {"sku": "W2999GL1N", "option1": "Black", "option2": "48mm", "option3": null, "price": "329.99", "available": true}
+      ]
+    },
+    {
+      "id": 9111111111120,
+      "title": "Zenith Nova",
+      "handle": "zenith-nova",
+      "vendor": "Amazfit",
+      "product_type": "",
+      "tags": ["AVAILABLE"],
+      "variants": [
+        {"sku": "ZN-1", "option1": "Default Title", "option2": null, "option3": null, "price": "249.99", "available": true}
+      ]
+    }
+  ]
+}

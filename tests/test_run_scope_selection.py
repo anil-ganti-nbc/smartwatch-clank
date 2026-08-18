@@ -84,7 +84,11 @@ class DefaultRegistryScopeTests(unittest.TestCase):
             self.assertNotIn(samsung_production_name, experimental)
         self.assertEqual(
             experimental,
-            {"samsung_official_news", "google_official_news", "garmin_official_news", "apple_official_news"},
+            {
+                "samsung_official_news", "google_official_news", "garmin_official_news", "apple_official_news",
+                "garmin_catalogue", "amazfit_official_news", "amazfit_catalogue",
+                "coros_support", "coros_updates", "coros_official_news",
+            },
         )
 
     def test_production_scope_is_unchanged_four_samsung_collectors_only(self):
