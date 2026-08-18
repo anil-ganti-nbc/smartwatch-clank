@@ -8,7 +8,7 @@ from pathlib import Path
 from .collectors import default_registry
 from .configuration import load_runtime_config
 from .core.lock import RunLock, RunLockError
-from .core.models import CollectorTier
+from .core.models import RunScope
 from .core.registry import CollectorRegistry
 from .core.runner import Runner, RunProvenance
 from .core.soak import prepare_soak_cycle
@@ -26,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--database", type=Path, help="override the configured database path")
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run", help="run registered collectors")
-    run.add_argument("--mode", choices=[tier.value for tier in CollectorTier], default="production")
+    run.add_argument("--mode", choices=[scope.value for scope in RunScope], default="production")
     run.add_argument("--no-lock", action="store_true", help="debug only: bypass the database run lock")
     run.add_argument("--allow-experimental-database", action="store_true", help="debug only: permit production mode on an experimental-named database")
     sub.add_parser("identity", help="show runtime identity, version, database, and config provenance")
@@ -84,7 +84,7 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
                     git_revision=runtime_identity["source_revision"],
                 )
                 outcomes = Runner(registry, store, config.runner, provenance).run(
-                    CollectorTier(args.mode), production_allowlist=config.production_allowlist,
+                    RunScope(args.mode), production_allowlist=config.production_allowlist,
                     run_metadata=run_metadata,
                 )
                 reconciliation = None

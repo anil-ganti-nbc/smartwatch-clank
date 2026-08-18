@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from smartwatch_clank.core.models import CollectorTier
+from smartwatch_clank.core.models import CollectorTier, RunScope
 from smartwatch_clank.core.registry import CollectorRegistry
 from smartwatch_clank.core.runner import Runner
 from smartwatch_clank.core.store import SQLiteStore
@@ -23,13 +23,13 @@ class RunnerTests(unittest.TestCase):
         collector = DummyCollector(items=(observation("dummy", "watch-1", price="100"),))
         registry.register(collector)
         runner = Runner(registry, self.store)
-        first = runner.run(CollectorTier.EXPERIMENTAL)[0]
+        first = runner.run(RunScope.ALL)[0]
         self.assertTrue(first.healthy)
         self.assertTrue(first.baseline)
         self.assertEqual(first.discovery_count, 0)
 
         collector.items = (observation("dummy", "watch-1", price="120"),)
-        second = runner.run(CollectorTier.EXPERIMENTAL)[0]
+        second = runner.run(RunScope.ALL)[0]
         self.assertFalse(second.baseline)
         self.assertEqual(second.discovery_count, 1)
         self.assertEqual(self.store.counts(), {"runs": 2, "observations": 2, "discoveries": 1})
@@ -40,7 +40,7 @@ class RunnerTests(unittest.TestCase):
         registry = CollectorRegistry()
         collector = DummyCollector(items=(observation("dummy", "watch-1"),))
         registry.register(collector)
-        Runner(registry, self.store).run(CollectorTier.EXPERIMENTAL)
+        Runner(registry, self.store).run(RunScope.ALL)
         metadata = self.store.connection.execute("SELECT metadata_json FROM runs").fetchone()[0]
         self.assertEqual(metadata, "{}")
 
@@ -48,7 +48,7 @@ class RunnerTests(unittest.TestCase):
         registry = CollectorRegistry()
         registry.register(DummyCollector("broken", error=RuntimeError("parser exploded")))
         registry.register(DummyCollector("healthy", (observation("healthy", "watch-1"),)))
-        outcomes = Runner(registry, self.store).run(CollectorTier.EXPERIMENTAL)
+        outcomes = Runner(registry, self.store).run(RunScope.ALL)
         self.assertEqual([(o.collector, o.healthy) for o in outcomes], [("broken", False), ("healthy", True)])
         self.assertEqual(self.store.counts()["runs"], 2)
 
@@ -57,9 +57,9 @@ class RunnerTests(unittest.TestCase):
         collector = DummyCollector(items=(observation("dummy", "watch-1"), observation("dummy", "watch-2")))
         registry.register(collector)
         runner = Runner(registry, self.store)
-        runner.run(CollectorTier.EXPERIMENTAL)
+        runner.run(RunScope.ALL)
         collector.items = ()
-        failed = runner.run(CollectorTier.EXPERIMENTAL)[0]
+        failed = runner.run(RunScope.ALL)[0]
         self.assertFalse(failed.healthy)
         self.assertIn("zero observations", failed.error)
         self.assertEqual(set(self.store.last_healthy_catalogue("dummy")), {"watch-1", "watch-2"})
@@ -71,9 +71,9 @@ class RunnerTests(unittest.TestCase):
         collector = DummyCollector(items=initial)
         registry.register(collector)
         runner = Runner(registry, self.store)
-        runner.run(CollectorTier.EXPERIMENTAL)
+        runner.run(RunScope.ALL)
         collector.items = initial[:4]
-        outcome = runner.run(CollectorTier.EXPERIMENTAL)[0]
+        outcome = runner.run(RunScope.ALL)[0]
         self.assertFalse(outcome.healthy)
         self.assertIn("catalogue collapse", outcome.error)
         self.assertEqual(self.store.counts()["discoveries"], 0)
@@ -82,7 +82,7 @@ class RunnerTests(unittest.TestCase):
         registry = CollectorRegistry()
         registry.register(DummyCollector("ready", tier=CollectorTier.PRODUCTION,
                                          items=(observation("ready", "watch-1"),)))
-        outcomes = Runner(registry, self.store).run(CollectorTier.PRODUCTION, ())
+        outcomes = Runner(registry, self.store).run(RunScope.PRODUCTION, ())
         self.assertEqual(outcomes, [])
         self.assertEqual(self.store.counts()["runs"], 0)
 
@@ -94,7 +94,7 @@ class RunnerTests(unittest.TestCase):
                                   error=AssertionError("disabled collector was called"))
         registry.register(enabled)
         registry.register(disabled)
-        outcomes = Runner(registry, self.store).run(CollectorTier.PRODUCTION, ("enabled",))
+        outcomes = Runner(registry, self.store).run(RunScope.PRODUCTION, ("enabled",))
         self.assertEqual([(item.collector, item.healthy) for item in outcomes], [("enabled", True)])
 
     def test_healthy_recovery_compares_against_last_healthy_not_rejected_snapshot(self):
@@ -103,11 +103,11 @@ class RunnerTests(unittest.TestCase):
         collector = DummyCollector(items=initial)
         registry.register(collector)
         runner = Runner(registry, self.store)
-        runner.run(CollectorTier.EXPERIMENTAL)
+        runner.run(RunScope.ALL)
         collector.items = initial[:2]
-        self.assertFalse(runner.run(CollectorTier.EXPERIMENTAL)[0].healthy)
+        self.assertFalse(runner.run(RunScope.ALL)[0].healthy)
         collector.items = initial + (observation("dummy", "watch-new"),)
-        recovered = runner.run(CollectorTier.EXPERIMENTAL)[0]
+        recovered = runner.run(RunScope.ALL)[0]
         self.assertTrue(recovered.healthy)
         self.assertEqual(recovered.discovery_count, 1)
         self.assertEqual(set(self.store.last_healthy_catalogue("dummy")), {*(f"watch-{n}" for n in range(10)), "watch-new"})

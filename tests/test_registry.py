@@ -1,6 +1,6 @@
 import unittest
 
-from smartwatch_clank.core.models import CollectorTier
+from smartwatch_clank.core.models import CollectorTier, RunScope
 from smartwatch_clank.core.registry import CollectorRegistry
 from tests.helpers import DummyCollector
 
@@ -18,8 +18,8 @@ class RegistryTests(unittest.TestCase):
         registry = CollectorRegistry()
         registry.register(DummyCollector("ready", tier=CollectorTier.PRODUCTION))
         registry.register(DummyCollector("lab", tier=CollectorTier.EXPERIMENTAL))
-        self.assertEqual(registry.selected(CollectorTier.PRODUCTION, ()), ())
-        self.assertEqual([c.name for c in registry.selected(CollectorTier.PRODUCTION, ("ready", "lab"))], ["ready"])
+        self.assertEqual(registry.selected(RunScope.PRODUCTION, ()), ())
+        self.assertEqual([c.name for c in registry.selected(RunScope.PRODUCTION, ("ready", "lab"))], ["ready"])
 
 
 if __name__ == "__main__":

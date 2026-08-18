@@ -1,7 +1,7 @@
 import unittest
 
 from smartwatch_clank.collectors.registry import build_registry
-from smartwatch_clank.core.models import CollectorTier
+from smartwatch_clank.core.models import CollectorTier, RunScope
 from tests.helpers import DummyCollector
 
 
@@ -48,7 +48,7 @@ class MultiOemRegistryTests(unittest.TestCase):
             registry.register(DummyCollector("oem_b_prod", tier=CollectorTier.PRODUCTION))
 
         registry = build_registry((("oem_a", register_oem_a), ("oem_b", register_oem_b)))
-        selected = registry.selected(CollectorTier.PRODUCTION, ("oem_a_prod", "oem_b_prod"))
+        selected = registry.selected(RunScope.PRODUCTION, ("oem_a_prod", "oem_b_prod"))
         self.assertEqual({c.name for c in selected}, {"oem_a_prod", "oem_b_prod"})
 
 

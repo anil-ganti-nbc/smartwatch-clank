@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from .collector import Collector
-from .models import CollectorTier
+from .models import CollectorTier, RunScope
 
 
 class CollectorRegistry:
@@ -21,9 +21,19 @@ class CollectorRegistry:
     def all(self) -> tuple[Collector, ...]:
         return tuple(self._collectors[name] for name in sorted(self._collectors))
 
-    def selected(self, mode: CollectorTier, production_allowlist: Iterable[str] = ()) -> tuple[Collector, ...]:
-        if mode is CollectorTier.EXPERIMENTAL:
+    def selected(self, scope: RunScope, production_allowlist: Iterable[str] = ()) -> tuple[Collector, ...]:
+        """Select collectors for one run, per `RunScope`.
+
+        EXPERIMENTAL is tier-only and deliberately never consults
+        `production_allowlist` -- a future experimental collector joins
+        the experimental soak automatically by virtue of its tier, and a
+        future production-tier collector never runs anywhere without
+        being explicitly allowlisted first.
+        """
+        if scope is RunScope.ALL:
             return self.all()
+        if scope is RunScope.EXPERIMENTAL:
+            return tuple(c for c in self.all() if c.tier is CollectorTier.EXPERIMENTAL)
         allowed = set(production_allowlist)
         return tuple(c for c in self.all() if c.tier is CollectorTier.PRODUCTION and c.name in allowed)
 

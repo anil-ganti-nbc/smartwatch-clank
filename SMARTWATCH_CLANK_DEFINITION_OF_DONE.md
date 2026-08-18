@@ -56,5 +56,17 @@ the canonical suite must pass. Owner UX validation remains **OWNER FIELD TEST
   Samsung Newsroom/Google Pixel blog/Garmin Newsroom/Apple Newsroom RSS
   and Atom feeds, deterministic relevance classification, and generic
   evidence persistence — production allowlist still unchanged (Samsung
-  only). Full report: `docs/expansion-stage-b-report.md`. Branches from
-  Stage A's branch; neither is merged to `main` yet.
+  only). Full report: `docs/expansion-stage-b-report.md`. Merged to `main`
+  2026-08-18 alongside Stage A; deployed to Hetzner the same day
+  (`docs/hetzner-deployment-2026-08-18.md`).
+- **Run-scope semantics correction (2026-08-19):** the Hetzner deployment
+  surfaced a real bug — `CollectorRegistry.selected()` treated
+  `--mode experimental` as "every registered collector regardless of
+  tier," so the four production Samsung collectors were silently running
+  through both the production cron and the new experimental soak timer.
+  Fixed with an explicit `RunScope` (`PRODUCTION` / `EXPERIMENTAL` / `ALL`)
+  distinct from `CollectorTier`: `PRODUCTION` still requires both
+  production tier and allowlist membership (unchanged); `EXPERIMENTAL` is
+  now tier-only and never consults the allowlist; `ALL` is the new explicit
+  diagnostic escape hatch. Production Samsung scope and cadence are
+  unchanged throughout. Full report: `docs/run-scope-correction-2026-08-19.md`.
