@@ -241,13 +241,13 @@ Failures: 0
 
 | Collector | Local access | Hetzner access |
 |---|---|---|
-| `garmin_catalogue` | Confirmed working | To be confirmed on deployment |
+| `garmin_catalogue` | Confirmed working | **Blocked** — `SourceHostBlockedError: HTTP 403` on `product-sitemap.xml`. New finding: Garmin's Cloudflare block covers the whole `www.garmin.com` host from Hetzner's IP, not just `/newsroom/feed/`. Isolated cleanly — the other 9 collectors were unaffected. |
 | `garmin_official_news` | Confirmed working | Confirmed **blocked** (Cloudflare 403) — pre-existing, unrelated to Stage C |
-| `amazfit_catalogue` | Confirmed working | To be confirmed on deployment |
-| `amazfit_official_news` | Confirmed working | To be confirmed on deployment |
-| `coros_support` | Confirmed working | To be confirmed on deployment |
-| `coros_updates` | Confirmed working | To be confirmed on deployment |
-| `coros_official_news` | Confirmed working | To be confirmed on deployment |
+| `amazfit_catalogue` | Confirmed working | Confirmed working (21 observations, healthy) |
+| `amazfit_official_news` | Confirmed working | Confirmed working (30 observations, healthy) |
+| `coros_support` | Confirmed working | Confirmed working (20 observations, healthy) |
+| `coros_updates` | Confirmed working | Confirmed working (40 observations, healthy) |
+| `coros_official_news` | Confirmed working | Confirmed working (15 observations, healthy) |
 
 ## K. Tests
 
@@ -258,16 +258,24 @@ health taxonomy (6), cross-cutting multi-OEM registry (1 new).
 
 ## L. Git/GitHub
 
-Branch: `expansion/stage-c-garmin-amazfit-coros`. To be committed, pushed, and
-merged via PR after this report is finalized — final commit/PR/merge SHAs will
-be added once that happens.
+Branch: `expansion/stage-c-garmin-amazfit-coros`, commit `8bc79e4`. Merged to
+`main` via [PR #15](https://github.com/anil-ganti-nbc/smartwatch-clank/pull/15)
+(real merge commit, not squashed), merge SHA `d987b66ad3b6f96575ddf1c04f8a76833a837026`.
+Local/GitHub SHA parity confirmed.
 
 ## M. Hetzner
 
-Not yet deployed — deployment (DB backup, git-based deploy, full suite,
-experimental cycle, per-collector Hetzner-access confirmation, Samsung
-production isolation re-verification) is the next step after merge, per the
-established Stage A/B/RunScope-fix workflow.
+Deployed via git (not SCP) to `/home/deploy/staging/smartwatch-clank`:
+1. Backed up the pre-deploy database (`backups/smartwatch-clank-20260818T205037Z-pre-stage-c.sqlite3`, 512 runs / 51,699 observations) and verified it opens.
+2. `git fetch` + `git checkout d987b66...` on the host.
+3. Built `smartwatch-clank:d987b66`, tagged with the exact revision.
+4. Three-way SHA verification: git HEAD, image `org.opencontainers.image.revision` label, and running `cli identity`'s `source_revision` all matched `d987b66ad3b6f96575ddf1c04f8a76833a837026`.
+5. `.deployed-id` updated to `d987b66`.
+6. Reinstalled the host-side test venv (`pip install -e .`) and ran the full suite: **163 passed**, matching local exactly.
+7. Ran two manual experimental cycles through the real `deploy/run.sh` entrypoint: all 6 new Stage C collectors plus the 4 pre-existing experimental collectors ran; the 2 Garmin collectors were host-blocked (403, isolated cleanly); all others healthy, `baseline: true` on the first cycle and `baseline: false, discoveries: 0` on the second (no false spam between consecutive cycles).
+8. Confirmed via direct SQL against the live volume: 532 total runs (up from 512 at backup time, +20 = 10 collectors × 2 manual cycles), 52,131 total observations, `samsung_product_catalogue` at 119 runs (was 118 at backup time — one normal production-cron cycle occurred during the deployment window, exactly as expected).
+9. Production crontab entry confirmed byte-identical: `50 1-23/2 * * * /home/deploy/staging/smartwatch-clank/deploy_run.sh ...`.
+10. `smartwatch-clank-soak.timer` confirmed still active/enabled, next fire unaffected by this deployment.
 
 ## N. Production isolation
 
