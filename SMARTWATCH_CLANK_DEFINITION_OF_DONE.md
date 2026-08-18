@@ -42,3 +42,11 @@ the canonical suite must pass. Owner UX validation remains **OWNER FIELD TEST
 - **P2:** richer availability semantics and delivery policy.
 - **P3:** additional OEMs and Unified/Product Intelligence work.
 - **Owner decision:** whether post-v1 scope expands beyond Samsung.
+- **Expansion Stage A (approved, shared infrastructure only, 2026-08-18):**
+  source classes, generic additive evidence/timeline tables, portable run
+  provenance (run UUID, config fingerprint, git revision, schema version),
+  and an OEM-agnostic collector registry landed with zero change to the
+  production Samsung path (still the only collectors, still the only
+  production allowlist entries). Full report:
+  `docs/expansion-stage-a-report.md`. Not yet deployed to Hetzner — see that
+  report's deployment-status section.

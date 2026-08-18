@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import traceback
+import uuid
 from dataclasses import dataclass
 
 from .diff import diff_catalogues
@@ -21,11 +22,27 @@ class RunnerConfig:
             raise ValueError("catalogue ratios must satisfy 0 <= failure <= warning <= 1")
 
 
+@dataclass(frozen=True, slots=True)
+class RunProvenance:
+    """Portable identity of the code/config that produced a run.
+
+    Persisted per run so a discovery can be traced back to exactly which
+    collector implementation, config, and schema version produced it, and so
+    a database can move between hosts without losing that trail.
+    """
+
+    app_version: str | None = None
+    config_fingerprint: str | None = None
+    git_revision: str | None = None
+
+
 class Runner:
-    def __init__(self, registry: CollectorRegistry, store: SQLiteStore, config: RunnerConfig | None = None) -> None:
+    def __init__(self, registry: CollectorRegistry, store: SQLiteStore, config: RunnerConfig | None = None,
+                 provenance: RunProvenance | None = None) -> None:
         self.registry = registry
         self.store = store
         self.config = config or RunnerConfig()
+        self.provenance = provenance or RunProvenance()
 
     def run(self, mode: CollectorTier, production_allowlist: tuple[str, ...] = (),
             run_metadata: dict | None = None) -> list[RunOutcome]:
@@ -46,6 +63,7 @@ class Runner:
 
     def _run_one(self, collector, run_metadata: dict) -> RunOutcome:
         started = utc_now()
+        run_uuid = str(uuid.uuid4())
         attempted_count = 0
         previous = self.store.last_healthy_catalogue(collector.name)
         previous_count = len(previous) if self.store.has_healthy_run(collector.name) else None
@@ -71,7 +89,11 @@ class Runner:
                 metadata["soak"] = run_metadata
             self.store.save_run(collector=collector.name, started_at=started, finished_at=finished, healthy=True,
                                 observations=result.observations, discoveries=discoveries,
-                                warning=assessment.warning, error=None, metadata=metadata)
+                                warning=assessment.warning, error=None, metadata=metadata,
+                                run_uuid=run_uuid, app_version=self.provenance.app_version,
+                                schema_version_at_run=self.store.SCHEMA_VERSION,
+                                config_fingerprint=self.provenance.config_fingerprint,
+                                git_revision=self.provenance.git_revision)
             self.store.save_health(HealthRecord(collector.name, True, len(result.observations), previous_count,
                                                 warning=assessment.warning, checked_at=finished))
             return RunOutcome(collector.name, True, baseline, len(result.observations), len(discoveries), assessment.warning)
@@ -85,7 +107,10 @@ class Runner:
                 metadata["soak"] = run_metadata
             self.store.save_run(collector=collector.name, started_at=started, finished_at=finished, healthy=False,
                                 observations=(), discoveries=[], warning=None, error=detail,
-                                metadata=metadata)
+                                metadata=metadata, run_uuid=run_uuid, app_version=self.provenance.app_version,
+                                schema_version_at_run=self.store.SCHEMA_VERSION,
+                                config_fingerprint=self.provenance.config_fingerprint,
+                                git_revision=self.provenance.git_revision)
             self.store.save_health(HealthRecord(collector.name, False, attempted_count, previous_count,
                                                 error=detail, checked_at=finished))
             return RunOutcome(collector.name, False, False, attempted_count, 0, error=detail)

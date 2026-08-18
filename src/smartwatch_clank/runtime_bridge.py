@@ -6,6 +6,7 @@ import sys
 from dataclasses import asdict, dataclass
 
 from . import __version__
+from .core.store import SQLiteStore
 
 
 def _source_revision() -> str:
@@ -36,12 +37,13 @@ class RuntimeIdentity:
     notifications_enabled: bool
     source_revision: str
     source_revision_short: str
+    schema_version: int
 
 
 def identity() -> dict[str, object]:
     return asdict(RuntimeIdentity(
         "smartwatch-clank", __version__, sys.version.split()[0], platform.platform(), 2, True, False,
-        _source_revision(), _source_revision_short(),
+        _source_revision(), _source_revision_short(), SQLiteStore.SCHEMA_VERSION,
     ))
 
 
