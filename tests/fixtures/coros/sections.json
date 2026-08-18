@@ -1,0 +1,18 @@
+{
+  "count": 12,
+  "next_page": null,
+  "sections": [
+    {"id": 1001, "name": "COROS PACE 4", "html_url": "https://support.coros.com/hc/en-us/sections/1001", "updated_at": "2026-08-05T10:16:05Z"},
+    {"id": 1002, "name": "COROS APEX 4", "html_url": "https://support.coros.com/hc/en-us/sections/1002", "updated_at": "2026-08-08T14:44:10Z"},
+    {"id": 1003, "name": "COROS NOMAD", "html_url": "https://support.coros.com/hc/en-us/sections/1003", "updated_at": "2026-07-30T04:21:10Z"},
+    {"id": 1004, "name": "COROS Account", "html_url": "https://support.coros.com/hc/en-us/sections/1004", "updated_at": "2026-01-01T00:00:00Z"},
+    {"id": 1005, "name": "COROS Heart Rate Monitor", "html_url": "https://support.coros.com/hc/en-us/sections/1005", "updated_at": "2026-01-01T00:00:00Z"},
+    {"id": 1006, "name": "COROS POD 2", "html_url": "https://support.coros.com/hc/en-us/sections/1006", "updated_at": "2026-01-01T00:00:00Z"},
+    {"id": 1007, "name": "Navigation", "html_url": "https://support.coros.com/hc/en-us/sections/1007", "updated_at": "2026-01-01T00:00:00Z"},
+    {"id": 1008, "name": "Troubleshoot", "html_url": "https://support.coros.com/hc/en-us/sections/1008", "updated_at": "2026-01-01T00:00:00Z"},
+    {"id": 1009, "name": "Release Notes for COROS Devices", "html_url": "https://support.coros.com/hc/en-us/sections/1009", "updated_at": "2026-08-18T17:06:05Z"},
+    {"id": 1010, "name": "August 2026 Feature Update", "html_url": "https://support.coros.com/hc/en-us/sections/1010", "updated_at": "2026-08-01T00:00:00Z"},
+    {"id": 1011, "name": "June 2026 Feature Update", "html_url": "https://support.coros.com/hc/en-us/sections/1011", "updated_at": "2026-06-01T00:00:00Z"},
+    {"id": 1012, "name": "KIPRUN GPS 500", "html_url": "https://support.coros.com/hc/en-us/sections/1012", "updated_at": "2026-01-01T00:00:00Z"}
+  ]
+}

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Amazfit News</title>
+  <entry>
+    <title>Amazfit Introduces Active Max: Bigger, Brighter, and Built for Maximum Performance</title>
+    <link href="https://us.amazfit.com/blogs/news/active-max-launch"/>
+    <id>urn:amazfit:active-max-launch</id>
+    <updated>2026-08-01T12:00:00-07:00</updated>
+    <category term="Product Launch"/>
+    <summary>Amazfit today announced the Active Max smartwatch.</summary>
+  </entry>
+  <entry>
+    <title>Zepp Health's Amazfit Adds Athlete Ambassadors to Team Amazfit Roster</title>
+    <link href="https://us.amazfit.com/blogs/news/team-amazfit-ambassadors"/>
+    <id>urn:amazfit:team-ambassadors</id>
+    <updated>2026-07-20T09:00:00-07:00</updated>
+    <category term="Partnerships"/>
+    <summary>New athlete ambassadors join Team Amazfit.</summary>
+  </entry>
+  <entry>
+    <title>Introducing the Helio Strap Pro</title>
+    <link href="https://us.amazfit.com/blogs/news/helio-strap-pro-launch"/>
+    <id>urn:amazfit:helio-strap-pro</id>
+    <updated>2026-06-18T12:00:00-07:00</updated>
+    <category term="Product Launch"/>
+    <summary>The Helio Strap Pro is Amazfit's newest training tool.</summary>
+  </entry>
+</feed>

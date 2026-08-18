@@ -1,0 +1,18 @@
+{
+  "count": 2,
+  "next_page": null,
+  "articles": [
+    {
+      "id": 2001,
+      "title": "COROS PACE 4 Release Notes",
+      "html_url": "https://support.coros.com/hc/en-us/articles/2001",
+      "updated_at": "2026-08-18T17:06:05Z"
+    },
+    {
+      "id": 2002,
+      "title": "COROS APEX 4 (42) and APEX 4 (46) Release Notes",
+      "html_url": "https://support.coros.com/hc/en-us/articles/2002",
+      "updated_at": "2026-08-08T14:44:10Z"
+    }
+  ]
+}

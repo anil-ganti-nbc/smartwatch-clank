@@ -40,6 +40,25 @@ class MultiOemRegistryTests(unittest.TestCase):
         self.assertIn("samsung_support_in", names)
         self.assertEqual(registry.registration_failures, {})
 
+    def test_default_registry_registers_all_stage_c_collectors_alongside_existing_ones(self):
+        from smartwatch_clank.collectors import default_registry
+
+        registry = default_registry()
+        names = {c.name for c in registry.all()}
+        self.assertEqual(registry.registration_failures, {})
+        stage_c_names = {
+            "garmin_catalogue", "amazfit_catalogue", "amazfit_official_news",
+            "coros_support", "coros_updates", "coros_official_news",
+        }
+        self.assertTrue(stage_c_names.issubset(names))
+        # Existing Samsung production + all 4 original news collectors are
+        # untouched by Stage C's registration additions.
+        self.assertTrue({
+            "samsung_product_catalogue", "samsung_support_in", "samsung_support_gb", "samsung_support_de",
+            "samsung_official_news", "google_official_news", "garmin_official_news", "apple_official_news",
+        }.issubset(names))
+        self.assertEqual(len(names), len(stage_c_names) + 8)  # 4 Samsung production + 4 original news collectors
+
     def test_production_selection_is_oem_agnostic(self):
         def register_oem_a(registry):
             registry.register(DummyCollector("oem_a_prod", tier=CollectorTier.PRODUCTION))

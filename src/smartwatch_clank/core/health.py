@@ -7,6 +7,28 @@ class CatalogueHealthError(RuntimeError):
     pass
 
 
+class SourceHealthError(RuntimeError):
+    """Base for typed source-fetch failures, distinct from parser/logic bugs.
+
+    Lets a run's stored error say *why* a collector failed (host blocked us,
+    we got rate limited, the response didn't parse) instead of a bare
+    exception message -- see docs/hetzner-deployment-2026-08-18.md's Garmin
+    403 case, which this taxonomy is built to represent going forward.
+    """
+
+
+class SourceHostBlockedError(SourceHealthError):
+    """The source actively refused us (e.g. HTTP 403, bot-protection challenge)."""
+
+
+class SourceRateLimitedError(SourceHealthError):
+    """The source throttled us (e.g. HTTP 429)."""
+
+
+class ParserFailureError(SourceHealthError):
+    """The response was fetched successfully but couldn't be parsed as expected."""
+
+
 @dataclass(frozen=True, slots=True)
 class HealthAssessment:
     warning: str | None = None
