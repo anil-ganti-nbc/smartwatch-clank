@@ -48,7 +48,8 @@ def test_field_test_dashboard_has_four_manual_sources(monkeypatch, tmp_path):
     config = load_runtime_config()
     with SQLiteStore(config.database): pass
     page = render_dashboard(config.database, default_registry(), controller=object())
-    assert "Collect now" in page
+    assert "Collection disabled" in page
+    assert "/api/local-collection/run" not in page
     for source in ("samsung_product_catalogue", "samsung_support_de", "samsung_support_gb", "samsung_support_in"):
         assert source in page
 
