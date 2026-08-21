@@ -13,7 +13,7 @@
 # touch that path-resolution code (out of scope: no code changes beyond
 # provenance), this image preserves the source-checkout layout under /app and
 # runs via `python -m`, exactly like Chinese Tech Wire's flat-source pattern.
-FROM python:3.12-slim-bookworm
+FROM python:3.12-slim-bookworm@sha256:a116514e19457bcb7af7efe9c3dd0b9b71e85b317694e7882a1c52aa15a78134
 
 ARG GIT_REVISION=unknown
 LABEL clank.id="smartwatch-clank" \

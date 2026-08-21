@@ -12,6 +12,9 @@ license = {text = "Proprietary"}
 authors = [{name = "Notebookcheck"}]
 dependencies = []
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0,<10"]
+
 [project.scripts]
 smartwatch-clank = "smartwatch_clank.cli:main"
 

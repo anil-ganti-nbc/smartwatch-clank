@@ -1,5 +1,9 @@
 # Smartwatch Clank
 
+> **Phase 0: UNVERIFIED_PRODUCTION — promotion frozen.** The unauthenticated
+> dashboard is loopback-only and its collection mutation is disabled until an
+> authenticated profile exists.
+
 > Status: Experimental / under construction
 
 Smartwatch Clank is an independently runnable intelligence collector for connected wrist-worn computing devices. It stores durable source observations, computes deterministic changes, and protects editorial alerts from broken collectors.

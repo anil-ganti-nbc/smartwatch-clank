@@ -15,6 +15,15 @@ class RunLockError(RuntimeError):
 def _pid_is_alive(pid: int) -> bool:
     if pid <= 0:
         return False
+    if os.name == "nt":
+        import ctypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        handle = kernel32.OpenProcess(0x1000, False, pid)
+        if handle:
+            kernel32.CloseHandle(handle)
+            return True
+        return ctypes.get_last_error() == 5
     try:
         os.kill(pid, 0)
     except ProcessLookupError:
@@ -94,4 +103,3 @@ class RunLock:
             return True
         except FileNotFoundError:
             return True
-
