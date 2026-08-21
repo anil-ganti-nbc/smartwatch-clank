@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+import threading
+import urllib.error
+from urllib.request import Request, urlopen
+
+import pytest
 
 from smartwatch_clank.configuration import load_runtime_config
 from smartwatch_clank.core.store import SQLiteStore
-from smartwatch_clank.dashboard import render_dashboard
+from smartwatch_clank.dashboard import render_dashboard, serve
 from smartwatch_clank.collectors import default_registry
 
 
@@ -46,6 +51,31 @@ def test_field_test_dashboard_has_four_manual_sources(monkeypatch, tmp_path):
     assert "Collect now" in page
     for source in ("samsung_product_catalogue", "samsung_support_de", "samsung_support_gb", "samsung_support_in"):
         assert source in page
+
+
+@pytest.mark.parametrize("host", ["0.0.0.0", "192.168.1.10", "::"])
+def test_dashboard_rejects_non_loopback_bind(host):
+    with pytest.raises(ValueError, match="must be loopback"):
+        serve(host=host, port=0)
+
+
+def test_dashboard_rejects_unauthenticated_collection_mutation(monkeypatch, tmp_path):
+    monkeypatch.setenv("SMARTWATCH_CLANK_DATA_DIR", str(tmp_path / "state"))
+    server = serve(port=0, controller=object())
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        request = Request(
+            f"http://127.0.0.1:{server.server_port}/api/local-collection/run",
+            data=b"{}", method="POST",
+        )
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urlopen(request, timeout=3)
+        assert exc.value.code == 403
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+        server.server_close()
 
 
 def test_selected_runner_rejects_non_production_source(tmp_path):

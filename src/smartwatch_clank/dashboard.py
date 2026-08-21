@@ -1,7 +1,7 @@
 """Local, read-only desktop field-test dashboard for canonical Smartwatch state."""
 from __future__ import annotations
 
-import html, json
+import html, ipaddress, json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
@@ -46,6 +46,10 @@ def render_dashboard(database, registry, controller=None) -> str:
 <section class=card id=reconciliation style="margin-top:14px"><h2>Catalogue / Support Reconciliation · Regional Matrix</h2>{table(('Base model','Regional SKU','Region','Relationship','Evidence'),relrows,'No reconciliation rows yet','Catalogue and regional support relationships will appear after canonical runs.')}</section><section class="card guide" id=about style="margin-top:14px"><div><b>Support evidence</b>Regional support presence indicates model/region existence; it is not retail availability.</div><div><b>Catalogue evidence</b>Catalogue absence can be lag or regional scope; it is not discontinuation.</div><div><b>Owner role</b>Use direct source evidence and reconciliation, not assumptions.</div></section><div class=footer>Field Test Mode · Local data only · No data leaves this machine</div></main></div></body></html>'''
 
 def serve(host: str="127.0.0.1", port: int=8300, controller=None) -> ThreadingHTTPServer:
+    try: loopback = ipaddress.ip_address(host).is_loopback
+    except ValueError: loopback = host.lower() == "localhost"
+    if not loopback:
+        raise ValueError("Smartwatch Clank has no authenticated remote profile; dashboard host must be loopback")
     config=load_runtime_config()
     from .collectors import default_registry
     registry=default_registry()
@@ -59,8 +63,6 @@ def serve(host: str="127.0.0.1", port: int=8300, controller=None) -> ThreadingHT
             body=render_dashboard(config.database,registry,controller).encode(); self.send_response(200); self.send_header("Content-Type","text/html; charset=utf-8"); self.end_headers(); self.wfile.write(body)
         def do_POST(self):
             if urlparse(self.path).path != "/api/local-collection/run" or not controller: self.send_error(404); return
-            try: payload=json.loads(self.rfile.read(int(self.headers.get("Content-Length","0"))))
-            except Exception: self.send_error(400); return
-            accepted,result=controller.start(str(payload.get("source") or "")); body=json.dumps(result).encode(); self.send_response(202 if accepted else 409); self.send_header("Content-Type","application/json"); self.end_headers(); self.wfile.write(body)
+            self.send_error(403, "Dashboard mutations are disabled until an authenticated profile exists"); return
         def log_message(self,*_): pass
     return ThreadingHTTPServer((host,port),Handler)
