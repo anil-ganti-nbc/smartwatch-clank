@@ -10,3 +10,5 @@ config/local.yaml
 
 # Local AI-tool config, not project content
 .claude/
+logs/
+backups/
