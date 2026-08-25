@@ -38,6 +38,12 @@ class RuntimeIdentity:
     source_revision: str
     source_revision_short: str
     schema_version: int
+    notification_authority_state: str = "unsupported_by_policy"
+    notification_authority_evidence: str = (
+        "notifications/discord.py DiscordNotifier.notify raises NotImplementedError; "
+        "SMARTWATCH_CLANK_DEFINITION_OF_DONE.md documents deliberate absence"
+    )
+    soak_notification_policy: str = "suppressed_by_structure"
 
 
 def identity() -> dict[str, object]:

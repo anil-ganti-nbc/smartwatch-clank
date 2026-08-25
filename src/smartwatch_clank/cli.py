@@ -45,6 +45,15 @@ def build_parser() -> argparse.ArgumentParser:
     soak = sub.add_parser("soak", help="summarize production soak history")
     soak.add_argument("view", choices=["summary", "report"], nargs="?", default="summary")
     soak.add_argument("--days", type=int, default=30)
+    continuity = sub.add_parser(
+        "continuity",
+        help="inspect the ADR-0006 continuity registry (restore/gap/epoch evidence)",
+    )
+    continuity.add_argument(
+        "--ensure-seed", action="store_true",
+        help="create the registry with operator-verified incident seed records if absent "
+             "(append-only; never edits existing records)",
+    )
     backup = sub.add_parser("backup", help="create a consistent transferable database backup")
     backup.add_argument("output", type=Path)
     return parser
@@ -66,6 +75,31 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
         output.update({"database": str(database), "configuration": config.provenance()})
         _print(output)
         return 0
+    if args.command == "continuity":
+        from .core import continuity as continuity_module
+
+        if args.ensure_seed:
+            path = continuity_module.ensure_registry(database)
+            events = continuity_module.read_events(database)
+        elif continuity_module.registry_path(database).exists():
+            path = continuity_module.registry_path(database)
+            events = continuity_module.read_events(database)
+        else:
+            _print({
+                "status": "NO_REGISTRY",
+                "registry_path": str(continuity_module.registry_path(database)),
+                "message": "no continuity registry yet (run --ensure-seed to create it "
+                           "with the operator-verified restore/gap seed records)",
+            })
+            return 1
+        bad = continuity_module.verify_hashes(events)
+        epochs = sorted({e.get("new_epoch_id") for e in events if e.get("new_epoch_id")})
+        _print({
+            "status": "OK", "registry_path": str(path), "epochs": epochs,
+            "epoch_id": continuity_module.EPOCH_ID,
+            "event_count": len(events), "hash_mismatches": bad, "events": events,
+        })
+        return 1 if bad else 0
     if args.command in {"scope", "collectors"}:
         _print(scope_report(registry, config))
         return 0
@@ -73,6 +107,9 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
     if args.command == "run":
         if args.mode == "production" and "experimental" in database.name.lower() and not args.allow_experimental_database:
             parser.error("production mode refuses an experimental-named database; choose the canonical live path")
+        from .core import continuity as continuity_module
+
+        continuity_module.ensure_registry(database)
         lock_context = nullcontext() if args.no_lock else RunLock(database)
         try:
             with lock_context, SQLiteStore(database) as store:
@@ -117,9 +154,24 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
             return 2
 
     if args.command == "backup":
+        from .core import continuity as continuity_module
+
         try:
             with RunLock(database), SQLiteStore(database) as store:
                 output = store.backup_to(args.output)
+                output = dict(output)
+                continuity_src = continuity_module.registry_path(database)
+                if continuity_src.exists():
+                    import hashlib
+
+                    raw = continuity_src.read_bytes()
+                    continuity_copy = Path(str(args.output) + ".continuity.jsonl")
+                    continuity_copy.write_bytes(raw)
+                    output["continuity_snapshot"] = {
+                        "path": str(continuity_copy),
+                        "sha256": hashlib.sha256(raw).hexdigest(),
+                        "size_bytes": len(raw),
+                    }
             _print({"status": "BACKED_UP", "database": str(database), "output": str(output)})
             return 0
         except RunLockError as exc:
