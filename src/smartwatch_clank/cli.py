@@ -157,9 +157,17 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
         from .core import continuity as continuity_module
 
         try:
+            output = None
             with RunLock(database), SQLiteStore(database) as store:
-                output = store.backup_to(args.output)
-                output = dict(output)
+                # SQLiteStore.backup_to() returns the Path of the written
+                # backup; build the summary dict HERE (the serialization
+                # boundary) instead of dict()-ing a Path.
+                backup_path = store.backup_to(args.output)
+                output = {
+                    "database": str(database),
+                    "output": str(backup_path),
+                    "size_bytes": backup_path.stat().st_size,
+                }
                 continuity_src = continuity_module.registry_path(database)
                 if continuity_src.exists():
                     import hashlib
@@ -172,7 +180,8 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
                         "sha256": hashlib.sha256(raw).hexdigest(),
                         "size_bytes": len(raw),
                     }
-            _print({"status": "BACKED_UP", "database": str(database), "output": str(output)})
+            if output is not None:
+                _print({"status": "BACKED_UP", **output})
             return 0
         except RunLockError as exc:
             _print({"status": "BLOCKED", "database": str(database), "error": str(exc)})
