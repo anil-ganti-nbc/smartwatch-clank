@@ -86,8 +86,9 @@ class DefaultRegistryScopeTests(unittest.TestCase):
             experimental,
             {
                 "samsung_official_news", "google_official_news", "garmin_official_news", "apple_official_news",
-                "garmin_catalogue", "amazfit_official_news", "amazfit_catalogue",
+                "garmin_catalogue", "garmin_updates", "amazfit_official_news", "amazfit_catalogue",
                 "coros_support", "coros_updates", "coros_official_news",
+                "dcrainmaker_specialist",
             },
         )
 

@@ -28,6 +28,20 @@ _RELEVANT_PHRASES = (
 _OEM_RELEVANT_PHRASES: dict[str, tuple[str, ...]] = {
     "amazfit": ("balance", "bip", "cheetah", "t-rex", "trex", "active max", "active edge", "falcon", "zepp os"),
     "coros": ("pace", "apex", "vertix", "nomad", "dura", "pod"),
+    # Wave 2 (2026-08-28): specialist wearable-press feed (DC Rainmaker).
+    # These phrases only ever match against this specialist's own feed, so
+    # Garmin/Amazfit product words that are common English ("fenix" is
+    # invented, but "pace"/"active"-style ambiguity is why they're scoped)
+    # can't misfire on unrelated press releases.
+    "specialist_dcrainmaker": (
+        "fenix", "forerunner", "venu", "vivoactive", "instinct", "enduro",
+        "marq", "epix", "tactix", "descent", "quatix", "lily",
+        "amazfit balance", "amazfit bip", "amazfit t-rex", "amazfit active",
+        "amazfit cheetah", "amazfit falcon", "zepp os",
+        "coros pace", "coros apex", "coros vertix", "coros nomad",
+        "suunto race", "polar vantage", "polar grit",
+        "smartwatch", "gps watch", "running watch", "sports watch",
+    ),
 }
 
 # Explicit fitness-band / non-watch wearable phrases (spec section 3: the

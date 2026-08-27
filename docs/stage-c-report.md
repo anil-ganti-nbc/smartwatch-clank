@@ -307,3 +307,75 @@ OEMs' classification test assertions).
 
 Then STOP for human review. No Google/Apple/Huawei/Xiaomi/OnePlus/regulatory/
 app-reverse-engineering work begins automatically.
+
+---
+
+# Wave 2 addendum (2026-08-28): recovery-first completion + Garmin software updates
+
+This appendix documents the Wave 2 completion campaign against the Stage C
+work above. Everything in sections A-O is preserved verbatim as history.
+
+## Recovery matrix
+
+| Prior asset | State | Wave 2 action |
+|---|---|---|
+| garmin_catalogue (4,324-URL sitemap crawl + classification + cache) | PRESENT, valid code | REUSED - no recrawl performed; live probe revalidated only |
+| amazfit_catalogue (Shopify products.json) | PRESENT, live 2026-08-28 (60 products) | REUSED unchanged |
+| amazfit_official_news (Atom feed) | PRESENT, live (30 entries) | REUSED unchanged |
+| coros_support (Zendesk JSON) | PRESENT, live (sections endpoint healthy) | REUSED unchanged |
+| coros_updates (per-device release notes; accessory filter fix intact) | PRESENT, live | REUSED unchanged |
+| coros_official_news | PRESENT | REUSED unchanged |
+| garmin_official_news (newsroom RSS) | PRESENT; Hetzner-hostile since Aug (Cloudflare 403) | Unchanged; not part of this wave's scope |
+| Garmin software-update tracking | MISSING (Stage C: "not implemented") | **IMPLEMENTED** (`garmin_updates`) |
+| Amazfit software-update tracking | MISSING | Investigated; honestly **deferred** (below) |
+| Stage C crawl artefacts / classified-ID cache | Runtime-state only (var/), never committed by design | N/A - cache rebuilds on host |
+
+## New in Wave 2
+
+1. `garmin_updates` - Garmin software/firmware update intelligence. The
+   surface Stage C missed: Garmin's own beta-program forums expose
+   **official per-device-series announcement RSS feeds** whose items are
+   staff-authored release-note posts ("Fenix 8/Quatix 8/Enduro 3/Fenix 8
+   Pro/MicroLED version 23.27 - Available OTA"). Live probe: 5-family sweep,
+   100 update observations with version + channel extracted from every one.
+   Identity: link-hash based (`garmin:update:{sha1(link)[:16]}`), so a
+   changelog edit inside an already-seen thread maps to the SAME identity -
+   no duplicate NEW_UPDATE from title edits. Channel split:
+   public_beta vs stable; affected families preserved as a list for
+   multi-device titles. Feed failures are isolated per family (healthy
+   families still record).
+2. `dcrainmaker_specialist` - one specialist wearable-press source (brief cap
+   2-3): distinct discovery value (launch leaks, certification finds, beta
+   coverage that first-party surfaces miss); reuses OfficialNewsCollector +
+   an additive specialist phrase set in classifiers/news.py scoped ONLY to
+   this feed (zero effect on existing OEM classification assertions).
+
+Not implemented, documented instead:
+
+- **Amazfit software updates**: support.amazfit.com is a custom SPA; the
+  Zendesk-style API path returns HTML (not JSON); no public changelog/feed
+  was discoverable in bounded probes. Zepp OS versions appear only inside
+  marketing copy on PDPs ("Zepp OS 4.5"), which cannot produce versioned
+  per-release observations without building a fragile page-diff layer.
+  Verdict: PROMISING_DEFER - re-check when Amazfit publishes structured
+  release notes.
+- Specialist #2/#3 held back deliberately: no other candidate demonstrated
+  distinct discovery value over the combination of first-party feeds +
+  DC Rainmaker (the5krunner reviewed: real RSS, but overlapping Garmin/COROS
+  coverage; CORROBORATION_ONLY).
+
+## Host-access expectations (deployment phase must verify)
+
+| Collector | Local | Hetzner expectation |
+|---|---|---|
+| garmin_catalogue | ok | HETZNER_BLOCKED historically (403) - keep experimental |
+| garmin_updates (new) | ok (RSS via forums.garmin.com - different subdomain than www) | UNTESTED_ON_HETZNER - verify; may survive where www.garmin.com is blocked |
+| dcrainmaker_specialist (new) | ok | UNTESTED_ON_HETZNER |
+| amazfit_* / coros_* | ok | Confirmed working during Stage C deployment |
+
+## Tests
+
+Full suite after Wave 2: **186 passed, 0 failed** (173 pre-Wave-2 baseline +
+13 new across garmin_updates extraction/collection/isolation and specialist
+registration/classification). Registry expectations extended additively;
+no existing assertion weakened. Fleet Laws conformance suite: 10/10.

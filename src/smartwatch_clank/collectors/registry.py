@@ -21,7 +21,9 @@ from .coros.support import CorosSupportCollector
 from .coros.updates import CorosUpdatesCollector
 from .garmin.catalogue import GarminCatalogueCollector
 from .garmin.official_news import GarminOfficialNewsCollector
+from .garmin.updates import GarminUpdatesCollector
 from .google.official_news import GoogleOfficialNewsCollector
+from .specialists.dcrainmaker import DCRainmakerSpecialistCollector
 from .samsung import SamsungProductCatalogueCollector, SamsungSupportCollector
 from .samsung.common import SUPPORT_REGIONS
 from .samsung.official_news import SamsungOfficialNewsCollector
@@ -41,10 +43,20 @@ def _register_google(registry: CollectorRegistry) -> None:
 def _register_garmin(registry: CollectorRegistry) -> None:
     registry.register(GarminOfficialNewsCollector())
     registry.register(GarminCatalogueCollector())
+    # Wave 2 (2026-08-28): software-update intelligence via the beta-program
+    # announcement RSS feeds - first-party, versioned, staff-authored.
+    registry.register(GarminUpdatesCollector())
 
 
 def _register_apple(registry: CollectorRegistry) -> None:
     registry.register(AppleOfficialNewsCollector())
+
+
+def _register_specialists(registry: CollectorRegistry) -> None:
+    # Wave 2 (2026-08-28): ONE specialist wearable-press source (DC Rainmaker)
+    # -- distinct discovery value for leaks/certification finds that OEM
+    # first-party surfaces miss; generic tech publications remain excluded.
+    registry.register(DCRainmakerSpecialistCollector())
 
 
 def _register_amazfit(registry: CollectorRegistry) -> None:
@@ -68,6 +80,7 @@ OEM_REGISTRATIONS: tuple[tuple[str, Callable[[CollectorRegistry], None]], ...] =
     ("apple", _register_apple),
     ("amazfit", _register_amazfit),
     ("coros", _register_coros),
+    ("specialists", _register_specialists),
 )
 
 

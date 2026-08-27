@@ -47,8 +47,8 @@ class MultiOemRegistryTests(unittest.TestCase):
         names = {c.name for c in registry.all()}
         self.assertEqual(registry.registration_failures, {})
         stage_c_names = {
-            "garmin_catalogue", "amazfit_catalogue", "amazfit_official_news",
-            "coros_support", "coros_updates", "coros_official_news",
+            "garmin_catalogue", "garmin_updates", "amazfit_catalogue", "amazfit_official_news",
+            "coros_support", "coros_updates", "coros_official_news", "dcrainmaker_specialist",
         }
         self.assertTrue(stage_c_names.issubset(names))
         # Existing Samsung production + all 4 original news collectors are
@@ -57,7 +57,7 @@ class MultiOemRegistryTests(unittest.TestCase):
             "samsung_product_catalogue", "samsung_support_in", "samsung_support_gb", "samsung_support_de",
             "samsung_official_news", "google_official_news", "garmin_official_news", "apple_official_news",
         }.issubset(names))
-        self.assertEqual(len(names), len(stage_c_names) + 8)  # 4 Samsung production + 4 original news collectors
+        self.assertEqual(len(names), len(stage_c_names) + 8)  # 4 Samsung production + 4 original news collectors; Wave 2 adds garmin_updates + dcrainmaker_specialist  # 4 Samsung production + 4 original news collectors
 
     def test_production_selection_is_oem_agnostic(self):
         def register_oem_a(registry):
