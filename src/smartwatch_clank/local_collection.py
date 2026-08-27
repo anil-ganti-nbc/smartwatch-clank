@@ -60,3 +60,50 @@ class LocalCollectionController:
             with self._guard: self._state.update(state="already_running", message="Another local collection is already running.", finished_at=datetime.now(timezone.utc).isoformat())
         except Exception as exc:
             with self._guard: self._state.update(state="failed", message=f"{type(exc).__name__}: {exc}", finished_at=datetime.now(timezone.utc).isoformat())
+
+
+def run_finalized(config, registry, names: tuple[str, ...] | None = None) -> dict:
+    """Synchronously run one or more "finalized" (production_allowlist)
+    collectors, under a single `RunLock` acquisition -- backs both the
+    "Run all finalized collectors" and individual per-collector run
+    operator actions.
+
+    ``names`` defaults to the full `production_allowlist` ("Run All");
+    passing a single-element tuple runs just that collector. Either way,
+    membership in `config.production_allowlist` is the ONLY criterion for
+    what counts as finalized -- exactly matching the canonical
+    `python -m smartwatch_clank.cli run --mode production` selection.
+    `Runner.run_selected` raises `ValueError` for any name that is not
+    both production-tier AND allowlisted, so an experimental/soak collector
+    can never be reached through this function, by construction -- there is
+    no parameter that could widen the selection.
+
+    Reuses the same reconciliation step the CLI's production run and the
+    single-source `LocalCollectionController` already perform, so the
+    dashboard's Samsung Regional Matrix stays consistent regardless of
+    which surface triggered the run.
+    """
+    allowed = tuple(config.production_allowlist)
+    selected = names if names is not None else allowed
+    with RunLock(config.database), SQLiteStore(config.database) as store:
+        outcomes = Runner(registry, store, config.runner).run_selected(
+            selected, allowed, {"mode": "field_test_run_finalized"}
+        )
+        reconciliation = None
+        if store.has_healthy_run("samsung_product_catalogue"):
+            names = tuple(item.name for item in registry.all() if item.name.startswith("samsung_support_"))
+            reconciliation = persist_samsung_reconciliation(
+                store, reconcile_samsung(
+                    store.latest_healthy_observations(("samsung_product_catalogue",)),
+                    store.latest_healthy_observations(names),
+                )
+            )
+    return {
+        "outcomes": [
+            {"collector": r.collector, "healthy": r.healthy, "baseline": r.baseline,
+             "observations": r.observation_count, "discoveries": r.discovery_count,
+             "warning": r.warning, "error": r.error}
+            for r in outcomes
+        ],
+        "reconciliation": reconciliation,
+    }

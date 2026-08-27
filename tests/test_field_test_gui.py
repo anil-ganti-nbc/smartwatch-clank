@@ -79,6 +79,126 @@ def test_dashboard_rejects_unauthenticated_collection_mutation(monkeypatch, tmp_
         server.server_close()
 
 
+def _insert_discovery(store: SQLiteStore, *, identity: str = "SM-L300") -> int:
+    run_id = store.connection.execute(
+        "INSERT INTO runs(collector,started_at,finished_at,healthy,observation_count,warning,error) "
+        "VALUES('samsung_product_catalogue','2026-08-27T00:00:00+00:00','2026-08-27T00:01:00+00:00',1,1,NULL,NULL)"
+    ).lastrowid
+    discovery_id = store.connection.execute(
+        "INSERT INTO discoveries(run_id,collector,identity,change_type,confidence,editorial_level,source_url,"
+        "discovered_at,previous_json,current_json,evidence_json) VALUES(?, 'samsung_product_catalogue', ?, "
+        "'NEW_REFERENCE','HIGH','STRONG','https://official.example/model','2026-08-27T00:01:00+00:00',"
+        "NULL,'{}','{}')",
+        (run_id, identity),
+    ).lastrowid
+    store.connection.commit()
+    return discovery_id
+
+
+def _post(server, path: str, host: str = "127.0.0.1") -> tuple[int, str]:
+    request = Request(f"http://{host}:{server.server_port}{path}", data=b"{}", method="POST")
+    try:
+        response = urlopen(request, timeout=3)
+        return response.status, response.read().decode()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode()
+
+
+def test_local_operator_mode_authorizes_allowlisted_mutation_routes(monkeypatch, tmp_path):
+    """With local_operator=True, a loopback POST to an allowlisted route
+    (here: a QC decision) is authorized where the Phase-0 default would
+    403 -- and a route NOT on the explicit allowlist stays 403 even under
+    local_operator, proving the unlock is narrow, not a blanket one."""
+    monkeypatch.setenv("SMARTWATCH_CLANK_DATA_DIR", str(tmp_path / "state"))
+    config = load_runtime_config()
+    with SQLiteStore(config.database) as store:
+        discovery_id = _insert_discovery(store)
+
+    server = serve(port=0, controller=object(), local_operator=True)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        # Allowlisted route: authorized.
+        status, body = _post(server, f"/api/qc/decide/{discovery_id}?decision=USEFUL")
+        assert status == 200, body
+        assert '"status": "decided"' in body or '"status":"decided"' in body
+
+        # Not on the explicit allowlist: still 403 even with local_operator=True.
+        status, _ = _post(server, "/api/something-unreviewed")
+        assert status == 403
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+        server.server_close()
+
+
+def test_qc_decision_removes_item_from_active_queue_and_appears_in_recently_qced(monkeypatch, tmp_path):
+    monkeypatch.setenv("SMARTWATCH_CLANK_DATA_DIR", str(tmp_path / "state"))
+    config = load_runtime_config()
+    with SQLiteStore(config.database) as store:
+        discovery_id = _insert_discovery(store)
+
+    before = render_dashboard(config.database, default_registry(), local_operator=True)
+    assert "SM-L300" in before  # present in the active queue before QC
+
+    server = serve(port=0, controller=object(), local_operator=True)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        status, _ = _post(server, f"/api/qc/decide/{discovery_id}?decision=OUT_OF_STOCK")
+        assert status == 200
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+        server.server_close()
+
+    after = render_dashboard(config.database, default_registry(), local_operator=True)
+    assert "No active leads" in after or "SM-L300" not in after.split('id=queue')[1].split('id=qced')[0]
+    assert "OUT OF STOCK" in after.upper()
+
+
+def test_qc_decision_is_idempotent_against_duplicate_submission(monkeypatch, tmp_path):
+    monkeypatch.setenv("SMARTWATCH_CLANK_DATA_DIR", str(tmp_path / "state"))
+    config = load_runtime_config()
+    with SQLiteStore(config.database) as store:
+        discovery_id = _insert_discovery(store)
+
+    server = serve(port=0, controller=object(), local_operator=True)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        first_status, _ = _post(server, f"/api/qc/decide/{discovery_id}?decision=USEFUL")
+        second_status, second_body = _post(server, f"/api/qc/decide/{discovery_id}?decision=NOT_USEFUL")
+        assert first_status == 200
+        assert second_status == 409
+        assert "already_decided" in second_body
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+        server.server_close()
+
+    # Original decision unchanged -- no lost update from the rejected duplicate.
+    from smartwatch_clank.paths import default_qc_archive_path
+    from smartwatch_clank.qc_archive import QCArchive
+    archive = QCArchive(default_qc_archive_path(config.database))
+    assert archive.decision_for(discovery_id)["decision"] == "USEFUL"
+
+
+def test_run_one_rejects_non_finalized_collector_even_under_local_operator(monkeypatch, tmp_path):
+    monkeypatch.setenv("SMARTWATCH_CLANK_DATA_DIR", str(tmp_path / "state"))
+    server = serve(port=0, controller=object(), local_operator=True)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        status, body = _post(server, "/api/local-collection/run/garmin_catalogue")
+        assert status == 400
+        assert "not_finalized" in body
+    finally:
+        server.shutdown()
+        thread.join(timeout=3)
+        server.server_close()
+
+
 def test_selected_runner_rejects_non_production_source(tmp_path):
     from smartwatch_clank.core.runner import Runner
     config = load_runtime_config()

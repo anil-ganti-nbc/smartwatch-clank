@@ -16,6 +16,16 @@ def config_path(name: str) -> Path:
     return PROJECT_ROOT / "config" / name
 
 
+def default_qc_archive_path(database: Path | None = None) -> Path:
+    """Separate on-disk QC decision archive, physically distinct from the
+    live collector database (a different .sqlite3 file, never a table in
+    it). Lives beside whichever database is actually configured (same
+    reasoning as `default_garmin_catalogue_cache_path`), so it moves with
+    persistent state and survives a repo checkout being replaced."""
+    base = database if database is not None else default_database_path()
+    return base.parent / "smartwatch-clank-qc.sqlite3"
+
+
 def default_garmin_catalogue_cache_path() -> Path:
     """Persistent classified-product-ID cache, next to whatever DB is configured.
 
