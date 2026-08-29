@@ -30,10 +30,13 @@ services:
       # entry below; without it this would just be an unreachable address.
       SMARTWATCH_CLANK_GARMIN_PROXY: ${SMARTWATCH_CLANK_GARMIN_PROXY:-}
     extra_hosts:
-      # Lets the container reach the relay tunnel's endpoint bound to the
-      # Hetzner host's own loopback (127.0.0.1:18888) without publishing
-      # any port or joining host networking. No-op when the proxy var above
-      # is unset.
+      # host-gateway resolves to the Docker bridge gateway IP, not
+      # loopback -- the relay tunnel itself binds Hetzner's loopback
+      # (127.0.0.1:18888), which a container cannot reach directly. A
+      # small garmin-relay-forwarder container (network_mode: host, see
+      # docs/garmin-egress-relay.md) bridges that gap on port 18889,
+      # which is what SMARTWATCH_CLANK_GARMIN_PROXY actually points at.
+      # No-op when the proxy var above is unset.
       - "host.docker.internal:host-gateway"
     volumes:
       - smartwatch_clank_data:/app/data
