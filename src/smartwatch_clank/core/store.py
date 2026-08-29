@@ -21,8 +21,26 @@ class SQLiteStore:
     # see the Expansion Stage A report for what each version added.
     SCHEMA_VERSION = 2
 
-    def __init__(self, path: Path | str) -> None:
+    def __init__(self, path: Path | str, *, read_only: bool = False) -> None:
         self.path = Path(path)
+        self.read_only = read_only
+        if read_only:
+            # For read-only callers (currently: `backup`, which only ever
+            # reads the source via Connection.backup() -- it never needs
+            # the source's own schema migrated). Opened via a `mode=ro`
+            # URI rather than a plain read-write connect(): _migrate()
+            # below is unconditional DDL/DML (ALTER TABLE, INSERT ... ON
+            # CONFLICT, commit), which needs a writable connection even
+            # when every statement is a structural no-op -- exactly the
+            # write a genuinely read-only-mounted source (e.g. a deploy
+            # script's pre-deploy backup step) cannot make. Skipping
+            # _migrate() entirely here is correct, not a shortcut: backup
+            # copies whatever schema already exists in the source, and
+            # every real writer already runs _migrate() on its own
+            # non-read-only SQLiteStore before this ever sees the file.
+            self.connection = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
+            self.connection.row_factory = sqlite3.Row
+            return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.connection = sqlite3.connect(self.path)
         self.connection.row_factory = sqlite3.Row

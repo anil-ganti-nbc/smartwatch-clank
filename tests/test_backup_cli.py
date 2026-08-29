@@ -13,11 +13,14 @@ written. The contract under test:
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
+import os
 import sqlite3
 import sys
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -26,6 +29,7 @@ if str(ROOT) not in sys.path:
 import pytest
 
 from smartwatch_clank.cli import main
+from smartwatch_clank.core.lock import RunLock
 from smartwatch_clank.core.store import SQLiteStore
 
 
@@ -83,3 +87,55 @@ def test_backup_cli_writes_verified_continuity_sidecar(tmp_path, capsys):
     assert raw == reg.read_bytes()
     assert snap["sha256"] == hashlib.sha256(raw).hexdigest()
     assert snap["size_bytes"] == len(raw)
+
+
+def _erofs_on_rdwr_open(real_open):
+    def _fake_open(path, flags, *args, **kwargs):
+        if flags & os.O_CREAT and flags & os.O_RDWR:
+            raise OSError(errno.EROFS, "Read-only file system", str(path))
+        return real_open(path, flags, *args, **kwargs)
+    return _fake_open
+
+
+def test_backup_cli_succeeds_end_to_end_against_a_read_only_mounted_source(tmp_path, capsys):
+    """Reproduces scripts/deploy_hetzner.sh's pre-deploy backup step
+    end-to-end through the real `backup` CLI entrypoint: the DB volume is
+    mounted read-only, but the lock file already exists from a prior
+    writable production/collector run against the same volume (exactly the
+    live staging state). Before the fix, this aborted the whole deploy at
+    RunLock.acquire() with a raw OSError before checkout/build ever ran --
+    reproduced for real against a genuine Docker `:ro` bind mount on
+    Hetzner/NAS; this pins the same fix at the actual entrypoint the deploy
+    script calls, without needing Docker to run in CI.
+    """
+    db = tmp_path / "sw.sqlite3"
+    out = tmp_path / "backups" / "pre-deploy.db"
+
+    # Seed exactly like the real staging volume: a migrated DB plus a lock
+    # file left behind by a prior writable run.
+    with SQLiteStore(db) as store:
+        store.set_soak_state("active_host_id", "hetzner-clank-fleet-01")
+    seeded_lock = RunLock(db)
+    seeded_lock.acquire()
+    seeded_lock.release()
+
+    real_open = os.open
+    with mock.patch("smartwatch_clank.core.lock.os.open", side_effect=_erofs_on_rdwr_open(real_open)):
+        rc = main(["--database", str(db), "backup", str(out)])
+
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "BACKED_UP"
+    con = sqlite3.connect(f"file:{out}?mode=ro", uri=True)
+    try:
+        assert con.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert con.execute("SELECT value FROM soak_state WHERE key='active_host_id'").fetchone()[0] == (
+            "hetzner-clank-fleet-01"
+        )
+    finally:
+        con.close()
+
+    # The source database itself must be provably untouched by the backup:
+    # still openable read-write afterward, same host_id, no stray writes.
+    with SQLiteStore(db) as store:
+        assert store.get_soak_state("active_host_id") == "hetzner-clank-fleet-01"

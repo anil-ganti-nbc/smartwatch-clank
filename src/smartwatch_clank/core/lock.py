@@ -33,6 +33,7 @@ acquire()/release()/context-manager surface so `cli.py` and
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import socket
@@ -116,8 +117,37 @@ class RunLock:
         self.release()
 
     def acquire(self) -> None:
+        # A deliberately read-only-mounted database (e.g. a deploy script's
+        # pre-deploy backup step, which must never be able to write the
+        # source it's backing up) makes O_RDWR/O_CREAT here fail with
+        # EROFS even when the lock file already exists from a prior
+        # writable run. flock() itself does not require a writable fd for
+        # an exclusive lock on Linux -- it is scoped to the file's inode,
+        # not its open access mode -- so falling back to a read-only open
+        # of the SAME lock file preserves genuine, real mutual exclusion
+        # against any writer holding/wanting the SAME lock (verified: a
+        # lock taken through a read-write mount of this volume correctly
+        # blocks a concurrent acquire attempt through a read-only mount of
+        # the same volume, and vice versa). Only the diagnostic owner
+        # metadata below becomes unavailable to write in that case -- the
+        # lock's actual protection is identical either way.
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(self.path, os.O_CREAT | os.O_RDWR)
+        writable = True
+        try:
+            fd = os.open(self.path, os.O_CREAT | os.O_RDWR)
+        except OSError as exc:
+            if exc.errno != errno.EROFS:
+                raise
+            try:
+                fd = os.open(self.path, os.O_RDONLY)
+            except OSError as ro_exc:
+                raise RunLockError(
+                    f"cannot acquire run lock: {self.path} is on a read-only mount and has "
+                    "no pre-existing lock file -- run a write-capable command against this "
+                    "database at least once before backing it up read-only"
+                ) from ro_exc
+            writable = False
+
         try:
             _os_lock(fd)
         except OSError as exc:
@@ -127,18 +157,19 @@ class RunLock:
                 f"database run lock is held: {json.dumps(current, sort_keys=True)}"
             ) from exc
 
-        owner = {
-            "pid": os.getpid(), "host": socket.gethostname(), "database": str(self.database),
-            "acquired_at": datetime.now(timezone.utc).isoformat(), "token": self.token,
-        }
-        try:
-            os.ftruncate(fd, 0)
-            os.lseek(fd, 0, os.SEEK_SET)
-            os.write(fd, json.dumps(owner, sort_keys=True).encode("utf-8"))
-        except OSError:
-            # Metadata is diagnostic-only; a write failure must not stop us
-            # from holding a lock we have already, genuinely, acquired.
-            pass
+        if writable:
+            owner = {
+                "pid": os.getpid(), "host": socket.gethostname(), "database": str(self.database),
+                "acquired_at": datetime.now(timezone.utc).isoformat(), "token": self.token,
+            }
+            try:
+                os.ftruncate(fd, 0)
+                os.lseek(fd, 0, os.SEEK_SET)
+                os.write(fd, json.dumps(owner, sort_keys=True).encode("utf-8"))
+            except OSError:
+                # Metadata is diagnostic-only; a write failure must not stop us
+                # from holding a lock we have already, genuinely, acquired.
+                pass
         self._fd = fd
         self.acquired = True
 

@@ -158,7 +158,7 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
 
         try:
             output = None
-            with RunLock(database), SQLiteStore(database) as store:
+            with RunLock(database), SQLiteStore(database, read_only=True) as store:
                 # SQLiteStore.backup_to() returns the Path of the written
                 # backup; build the summary dict HERE (the serialization
                 # boundary) instead of dict()-ing a Path.
