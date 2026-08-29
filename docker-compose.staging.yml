@@ -23,6 +23,18 @@ services:
       # migration model (README.md: "Set SMARTWATCH_CLANK_HOST_ID to a
       # stable, unique host label if the system hostname is not suitable").
       SMARTWATCH_CLANK_HOST_ID: ${SMARTWATCH_CLANK_HOST_ID:-hetzner-clank-fleet-01}
+      # Opt-in Garmin-only egress relay (see docs/garmin-egress-relay.md).
+      # Empty/unset means the two www.garmin.com collectors fetch direct,
+      # exactly as before this existed -- every other collector never reads
+      # this variable at all. host.docker.internal needs the extra_hosts
+      # entry below; without it this would just be an unreachable address.
+      SMARTWATCH_CLANK_GARMIN_PROXY: ${SMARTWATCH_CLANK_GARMIN_PROXY:-}
+    extra_hosts:
+      # Lets the container reach the relay tunnel's endpoint bound to the
+      # Hetzner host's own loopback (127.0.0.1:18888) without publishing
+      # any port or joining host networking. No-op when the proxy var above
+      # is unset.
+      - "host.docker.internal:host-gateway"
     volumes:
       - smartwatch_clank_data:/app/data
     command: ["run", "--mode", "production"]

@@ -29,6 +29,15 @@ class ParserFailureError(SourceHealthError):
     """The response was fetched successfully but couldn't be parsed as expected."""
 
 
+class ProxyUnreachableError(SourceHealthError):
+    """A configured egress proxy (e.g. the Garmin relay tunnel) could not be reached.
+
+    Distinct from SourceHostBlockedError: the source itself was never contacted --
+    the relay path is down. Kept separate so a dead tunnel is reported honestly
+    rather than looking like the source blocked us again.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class HealthAssessment:
     warning: str | None = None

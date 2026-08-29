@@ -1,0 +1,85 @@
+# Garmin egress relay (2026-08-29)
+
+## Problem
+
+`www.garmin.com` sits behind Cloudflare, which blanket-blocks the Hetzner
+soak host's IP with a bot-mitigation challenge — confirmed via matched-UA
+curl tests: same URL, same headers, same collector User-Agent, 403 from
+Hetzner and 200 from a residential IP. Documented since Stage C
+(`docs/stage-c-report.md`, `docs/hetzner-deployment-2026-08-18.md`); this is
+IP reputation, not a header/UA fix. Affects exactly two collectors:
+`garmin_catalogue` and `garmin_official_news` (both `www.garmin.com`).
+`garmin_updates` (`forums.garmin.com`, a different subdomain) is unaffected
+and always fetches direct.
+
+## Design
+
+Keep the whole soak on one host (Hetzner), one canonical DB, one
+`active_host_id` — no split-DB, no row-merge layer, no host-migration
+bookkeeping. Only the network *egress* for the two blocked collectors is
+rerouted, via an HTTP CONNECT proxy reachable through a reverse SSH tunnel
+from the NAS (`192.168.0.105`), which has a residential/non-blocked IP.
+
+```
+garmin_catalogue/garmin_official_news (in the Hetzner container)
+  -> http://host.docker.internal:18888   (docker-compose extra_hosts: host-gateway)
+  -> Hetzner host loopback 127.0.0.1:18888
+  -> reverse SSH tunnel (NAS -> Hetzner, -R 127.0.0.1:18888:garmin-relay-proxy:8888)
+  -> tinyproxy container on NAS (garmin-relay-proxy, internal docker network only)
+  -> www.garmin.com
+```
+
+Every other collector never reads the proxy env var and is unaffected.
+If the tunnel is down, `UrlLibHttpClient._check_proxy_reachable()` does a
+cheap TCP probe before attempting a real fetch and raises
+`ProxyUnreachableError` immediately — isolated to those two collectors by
+the Runner's existing per-collector exception handling, same as any other
+collector failure. No other collector, the DB, or `active_host_id` is
+touched by a dead tunnel.
+
+## NAS side (192.168.0.105)
+
+- Docker network `garmin-relay-net` (isolated, `172.20.0.0/16`, no host
+  ports published).
+- `garmin-relay-proxy`: `vimagick/tinyproxy`, config at
+  `/volume2/clank/garmin-relay/tinyproxy.conf`, `Allow`-restricted to the
+  relay network subnet, `restart: unless-stopped`.
+- `garmin-relay-tunnel`: `alpine:3.20` + `openssh-client`, holds
+  `ssh -N -R 127.0.0.1:18888:garmin-relay-proxy:8888` open to Hetzner,
+  `restart: unless-stopped`, `-o ServerAliveInterval=30` keepalive.
+- Private key: `/volume2/clank/garmin-relay/garmin_relay_tunnel` (mode 600,
+  bind-mounted `:ro` into the tunnel container). The matching public key is
+  the *only* copy of this credential outside NAS; it was generated fresh
+  for this purpose and never existed anywhere else.
+
+## Hetzner side
+
+- `deploy@204.168.142.1` `~/.ssh/authorized_keys` carries one extra
+  restricted entry for the relay key:
+  `no-pty,no-agent-forwarding,no-x11-forwarding,no-user-rc,permitlisten="18888"`.
+  This key can do exactly one thing: hold a remote listener on
+  `127.0.0.1:18888`. No shell, no pty, no other forwarding.
+  (The `restrict` shorthand was tried first and rejected the connection
+  outright even with `permitlisten` present — `sshd` logged "Server has
+  disabled port forwarding" despite reading the `permitlisten` option, so
+  the equivalent flags are spelled out explicitly instead.)
+- No `/etc/ssh/sshd_config` changes were needed — `AllowTcpForwarding`
+  already defaults to yes, and binding the forwarded port to Hetzner's own
+  loopback needs no `GatewayPorts` change.
+- `docker-compose.staging.yml`: `SMARTWATCH_CLANK_GARMIN_PROXY` (empty by
+  default → direct fetch, unchanged behavior) and an `extra_hosts:
+  host.docker.internal:host-gateway` entry so the container can reach the
+  loopback-bound tunnel port.
+- `deploy/run.sh`: passes `SMARTWATCH_CLANK_GARMIN_PROXY` through to the
+  container, defaulting to `http://host.docker.internal:18888` unless
+  explicitly overridden/unset.
+
+## Why NAS over Windows
+
+Windows was considered but not used: the fleet's standing rule is no
+Windows Task Scheduler entries or persistent background automation for
+these projects, and a relay tunnel needs to run continuously. NAS already
+runs long-lived Docker containers for this fleet (see the
+`honor-uk-iso-nas-001` tablet-clank campaign) with `restart:
+unless-stopped` — no scheduler involved, consistent with existing
+precedent — so it was the natural fit without proving Windows further.

@@ -9,6 +9,7 @@ across OEMs).
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 
 from smartwatch_clank.core.registry import CollectorRegistry
@@ -19,6 +20,7 @@ from .apple.official_news import AppleOfficialNewsCollector
 from .coros.official_news import CorosOfficialNewsCollector
 from .coros.support import CorosSupportCollector
 from .coros.updates import CorosUpdatesCollector
+from .common import UrlLibHttpClient
 from .garmin.catalogue import GarminCatalogueCollector
 from .garmin.official_news import GarminOfficialNewsCollector
 from .garmin.updates import GarminUpdatesCollector
@@ -41,8 +43,20 @@ def _register_google(registry: CollectorRegistry) -> None:
 
 
 def _register_garmin(registry: CollectorRegistry) -> None:
-    registry.register(GarminOfficialNewsCollector())
-    registry.register(GarminCatalogueCollector())
+    # www.garmin.com sits behind a Cloudflare block that has been
+    # Hetzner-hostile since Stage C (docs/stage-c-report.md, docs/hetzner-
+    # deployment-2026-08-18.md) -- confirmed the same block from a fresh
+    # Hetzner curl even with a browser UA, so it's IP-reputation, not a
+    # header/UA fix. SMARTWATCH_CLANK_GARMIN_PROXY, when set, routes ONLY
+    # these two www.garmin.com collectors through an HTTP-CONNECT egress
+    # proxy (the NAS relay tunnel; see docs/garmin-egress-relay.md).
+    # garmin_updates below is deliberately excluded: it hits
+    # forums.garmin.com, a different subdomain that is NOT blocked, so
+    # routing it through the relay would only add a dependency on the
+    # tunnel for a collector that already works direct.
+    garmin_proxy = os.environ.get("SMARTWATCH_CLANK_GARMIN_PROXY") or None
+    registry.register(GarminOfficialNewsCollector(client=UrlLibHttpClient(proxy_url=garmin_proxy)))
+    registry.register(GarminCatalogueCollector(client=UrlLibHttpClient(proxy_url=garmin_proxy)))
     # Wave 2 (2026-08-28): software-update intelligence via the beta-program
     # announcement RSS feeds - first-party, versioned, staff-authored.
     registry.register(GarminUpdatesCollector())
