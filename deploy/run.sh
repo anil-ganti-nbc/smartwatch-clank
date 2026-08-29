@@ -35,11 +35,17 @@ if [[ ! -f .deployed-id ]]; then
 fi
 export IMAGE_TAG="$(cat .deployed-id)"
 
-# Garmin-only egress relay (see docs/garmin-egress-relay.md): 18888 is the
-# fixed Hetzner-side loopback port the NAS relay tunnel binds via `ssh -R`.
+# Garmin-only egress relay (see docs/garmin-egress-relay.md): the NAS relay
+# tunnel binds Hetzner's own loopback at 127.0.0.1:18888 via `ssh -R`, but a
+# container reaches the host through the Docker bridge gateway IP, not
+# loopback -- host.docker.internal:18888 alone is unreachable from inside
+# the container. garmin-relay-forwarder (a --network host socat container,
+# see docs/garmin-egress-relay.md) bridges that gap: bound only to the
+# bridge gateway IP on 18889, forwarding to 127.0.0.1:18888. 18889, not
+# 18888, is therefore the port the container must use.
 # Set SMARTWATCH_CLANK_GARMIN_PROXY="" in the environment to disable it and
 # fall back to direct (i.e. known-blocked) fetches for those 2 collectors.
 exec docker compose -f docker-compose.staging.yml run --rm \
     -e SMARTWATCH_CLANK_HOST_ID="${SMARTWATCH_CLANK_HOST_ID:-hetzner-clank-fleet-01}" \
-    -e SMARTWATCH_CLANK_GARMIN_PROXY="${SMARTWATCH_CLANK_GARMIN_PROXY-http://host.docker.internal:18888}" \
+    -e SMARTWATCH_CLANK_GARMIN_PROXY="${SMARTWATCH_CLANK_GARMIN_PROXY-http://host.docker.internal:18889}" \
     smartwatch-clank run --mode experimental

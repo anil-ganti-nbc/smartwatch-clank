@@ -22,12 +22,27 @@ from the NAS (`192.168.0.105`), which has a residential/non-blocked IP.
 
 ```
 garmin_catalogue/garmin_official_news (in the Hetzner container)
-  -> http://host.docker.internal:18888   (docker-compose extra_hosts: host-gateway)
+  -> http://host.docker.internal:18889   (docker-compose extra_hosts: host-gateway)
+  -> Docker bridge gateway IP on Hetzner, 172.17.0.1:18889
+  -> garmin-relay-forwarder (Hetzner, network_mode: host, socat,
+     bound only to 172.17.0.1:18889 -- never the public interface)
   -> Hetzner host loopback 127.0.0.1:18888
   -> reverse SSH tunnel (NAS -> Hetzner, -R 127.0.0.1:18888:garmin-relay-proxy:8888)
   -> tinyproxy container on NAS (garmin-relay-proxy, internal docker network only)
   -> www.garmin.com
 ```
+
+**Why the extra hop (18889 -> 18888):** `host.docker.internal`/`host-gateway`
+resolves to the Docker bridge gateway IP on Linux, not loopback. The relay
+tunnel has to stay bound to Hetzner's own loopback (`127.0.0.1:18888`) --
+`GatewayPorts` was deliberately left untouched, so the tunnel cannot bind
+anywhere else. `garmin-relay-forwarder` is the minimal bridge between the
+two: a single `socat` container with `network_mode: host`, listening only
+on the bridge gateway IP (`172.17.0.1`, not `0.0.0.0` -- confirmed via `ss
+-tlnp` and a curl test from outside that address after deploy), forwarding
+to the loopback tunnel endpoint. One `ufw` rule
+(`allow from 172.17.0.0/16 to any port 18889 proto tcp`) permits only
+bridge-network traffic to reach it; nothing public-facing changed.
 
 Every other collector never reads the proxy env var and is unaffected.
 If the tunnel is down, `UrlLibHttpClient._check_proxy_reachable()` does a
@@ -71,8 +86,43 @@ touched by a dead tunnel.
   host.docker.internal:host-gateway` entry so the container can reach the
   loopback-bound tunnel port.
 - `deploy/run.sh`: passes `SMARTWATCH_CLANK_GARMIN_PROXY` through to the
-  container, defaulting to `http://host.docker.internal:18888` unless
+  container, defaulting to `http://host.docker.internal:18889` unless
   explicitly overridden/unset.
+- `garmin-relay-forwarder`: `docker run -d --name garmin-relay-forwarder
+  --network host --restart unless-stopped alpine/socat
+  TCP-LISTEN:18889,bind=172.17.0.1,fork,reuseaddr TCP:127.0.0.1:18888`.
+  Not in docker-compose (it's host infra, not part of the app) — a plain
+  standalone container, restarted by Docker itself on daemon/host restart
+  via its own restart policy, same as `garmin-relay-tunnel`/
+  `garmin-relay-proxy` on the NAS side.
+- `ufw allow from 172.17.0.0/16 to any port 18889 proto tcp` — the only
+  firewall change; scoped to the docker bridge subnet, nothing public.
+
+## Deploy-script issues found and fixed along the way (unrelated to this feature)
+
+Two pre-existing environment issues on the Hetzner staging checkout blocked
+`scripts/deploy_hetzner.sh` and were fixed as part of landing this, since
+the script can't get past its own DB-backup step otherwise:
+
+- `~/staging/smartwatch-clank/backups/` was `root:root` mode 755 (probably
+  left over from an earlier root-context operation) — the backup command
+  runs as the container's non-root `clank` (uid 10001), so it couldn't
+  write there. `chown deploy:deploy` + `chmod 777` (backup dumps aren't
+  secret; this directory only holds SQLite exports).
+- Scattered files under `.git/` (objects, and a few working-tree files
+  including the old `deploy/run.sh`) were also `root`-owned for the same
+  reason, breaking `git fetch`/`checkout`. `chown -R deploy:deploy .git .`
+  fixed it; `git checkout -- .` then reconciled the working tree.
+- Separately, `backup`'s own `RunLock` acquisition fails outright against
+  a `:ro`-mounted volume (`OSError: Read-only file system` creating the
+  lock file) — `deploy_hetzner.sh` step 3 mounts `:ro` deliberately, so
+  this is a real bug in the flock-based `RunLock` rewrite (PR #17)
+  colliding with the deploy script's read-only backup step. Worked around
+  for this deploy by mounting read-write instead (the backup command
+  itself never mutates the source DB) and verifying the ownership fix
+  first; not fixed in code — `backup` acquiring a write lock at all is
+  arguably wrong (it never writes to the source database), but that's out
+  of scope for this change.
 
 ## Why NAS over Windows
 
