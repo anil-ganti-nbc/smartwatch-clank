@@ -35,6 +35,11 @@ if [[ ! -f .deployed-id ]]; then
 fi
 export IMAGE_TAG="$(cat .deployed-id)"
 
+# Garmin-only egress relay (see docs/garmin-egress-relay.md): 18888 is the
+# fixed Hetzner-side loopback port the NAS relay tunnel binds via `ssh -R`.
+# Set SMARTWATCH_CLANK_GARMIN_PROXY="" in the environment to disable it and
+# fall back to direct (i.e. known-blocked) fetches for those 2 collectors.
 exec docker compose -f docker-compose.staging.yml run --rm \
     -e SMARTWATCH_CLANK_HOST_ID="${SMARTWATCH_CLANK_HOST_ID:-hetzner-clank-fleet-01}" \
+    -e SMARTWATCH_CLANK_GARMIN_PROXY="${SMARTWATCH_CLANK_GARMIN_PROXY-http://host.docker.internal:18888}" \
     smartwatch-clank run --mode experimental
