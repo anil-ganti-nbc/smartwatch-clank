@@ -9,6 +9,7 @@ namespace -- so a lock left behind by an abnormal exit could never have
 been reclaimed by any later invocation under the old design.
 """
 
+import errno
 import json
 import os
 import socket
@@ -137,6 +138,99 @@ class RunLockTests(unittest.TestCase):
 
     def test_pid_is_alive_self(self):
         self.assertTrue(_pid_is_alive(os.getpid()))
+
+
+class ReadOnlyMountLockTests(unittest.TestCase):
+    """Regression coverage for the deploy-script defect: `deploy_hetzner.sh`
+    mounts the DB volume read-only for its pre-deploy backup step, but the
+    old acquire() unconditionally opened the lock file O_CREAT|O_RDWR --
+    which fails with EROFS on a read-only mount even when the lock file
+    already exists from a prior writable run, aborting the deploy before
+    checkout/build ever ran. Reproduced for real against a genuine Docker
+    `:ro` bind mount on a Linux host (see docs/ for the write-up); these
+    tests pin the same behavior in a way that runs everywhere, by mocking
+    exactly the syscall that fails on a read-only mount rather than trying
+    to fake a real read-only filesystem cross-platform.
+    """
+
+    @staticmethod
+    def _erofs_on_rdwr_open(real_open):
+        def _fake_open(path, flags, *args, **kwargs):
+            if flags & os.O_CREAT and flags & os.O_RDWR:
+                raise OSError(errno.EROFS, "Read-only file system", str(path))
+            return real_open(path, flags, *args, **kwargs)
+        return _fake_open
+
+    def test_falls_back_to_readonly_open_when_lock_file_already_exists(self):
+        """The exact reported scenario: a lock file already exists (from a
+        prior real, writable collector/production run against this same
+        volume) and the mount is now read-only. acquire() must still
+        succeed by falling back to an O_RDONLY open of the same file."""
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "live.sqlite3"
+            # Seed the lock file exactly as a prior writable run would leave it.
+            seeded = RunLock(database)
+            seeded.acquire()
+            seeded.release()
+
+            real_open = os.open
+            with mock.patch("smartwatch_clank.core.lock.os.open", side_effect=self._erofs_on_rdwr_open(real_open)):
+                readonly_lock = RunLock(database)
+                readonly_lock.acquire()
+                try:
+                    self.assertTrue(readonly_lock.acquired)
+                finally:
+                    readonly_lock.release()
+
+    def test_clear_error_when_read_only_and_lock_file_never_existed(self):
+        """A read-only mount with no pre-existing lock file (e.g. a truly
+        fresh volume that has never had a writable run against it) cannot
+        be bridged -- the file must genuinely be creatable somewhere first.
+        This must raise a clear, actionable RunLockError, not a raw OSError
+        traceback."""
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "never-written.sqlite3"
+            real_open = os.open
+            with mock.patch("smartwatch_clank.core.lock.os.open", side_effect=self._erofs_on_rdwr_open(real_open)):
+                with self.assertRaisesRegex(RunLockError, "read-only mount"):
+                    RunLock(database).acquire()
+
+    @unittest.skipIf(sys.platform == "win32", "flock()/O_RDONLY semantics under test are POSIX-specific")
+    def test_readonly_fallback_lock_genuinely_conflicts_with_a_real_writer(self):
+        """Proves the core safety property the fix depends on: an
+        O_RDONLY-opened flock() is not a second-class lock -- it
+        participates in the exact same mutual exclusion as a normal
+        O_RDWR-opened one, on the same underlying file, regardless of which
+        side opened it which way. Verified for real against a Docker `:ro`
+        bind mount on Linux; this pins the same guarantee locally without
+        Docker, using the identical fcntl.flock() call the production code
+        path uses."""
+        import fcntl
+
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "live.sqlite3"
+            writer = RunLock(database)
+            writer.acquire()
+            try:
+                readonly_fd = os.open(writer.path, os.O_RDONLY)
+                try:
+                    with self.assertRaises(OSError):
+                        fcntl.flock(readonly_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                finally:
+                    os.close(readonly_fd)
+            finally:
+                writer.release()
+
+            # And the reverse direction: a lock taken through an
+            # O_RDONLY-opened fd must equally block a real O_RDWR writer.
+            readonly_fd = os.open(database.with_suffix(database.suffix + ".lock"), os.O_RDONLY)
+            fcntl.flock(readonly_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                with self.assertRaises(RunLockError):
+                    RunLock(database).acquire()
+            finally:
+                fcntl.flock(readonly_fd, fcntl.LOCK_UN)
+                os.close(readonly_fd)
 
 
 if __name__ == "__main__":
