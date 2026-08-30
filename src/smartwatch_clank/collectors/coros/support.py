@@ -80,7 +80,7 @@ def classify_section(name: str) -> tuple[str, tuple[str, ...]]:
 
 class CorosSupportCollector(Collector):
     name = "coros_support"
-    tier = CollectorTier.EXPERIMENTAL
+    tier = CollectorTier.PRODUCTION
 
     def __init__(self, client: HttpClient | None = None, sections_url: str = SECTIONS_URL) -> None:
         self.client = client or UrlLibHttpClient()

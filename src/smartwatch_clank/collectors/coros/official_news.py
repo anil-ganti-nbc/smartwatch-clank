@@ -67,7 +67,7 @@ def parse_stories(html: str) -> tuple[dict, ...]:
 
 class CorosOfficialNewsCollector(Collector):
     name = "coros_official_news"
-    tier = CollectorTier.EXPERIMENTAL
+    tier = CollectorTier.PRODUCTION
 
     def __init__(self, client: HttpClient | None = None, stories_url: str = STORIES_URL) -> None:
         self.client = client or UrlLibHttpClient()

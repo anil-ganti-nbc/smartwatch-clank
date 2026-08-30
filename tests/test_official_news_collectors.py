@@ -29,7 +29,9 @@ class OfficialNewsCollectorTests(unittest.TestCase):
     def test_samsung_official_news_classifies_and_reports_counts(self):
         collector = SamsungOfficialNewsCollector(FixtureClient({SAMSUNG_FEED_URL: fixture("samsung.xml")}))
         result = collector.run()
-        self.assertEqual(collector.tier, CollectorTier.EXPERIMENTAL)
+        # Promoted to PRODUCTION 2026-08-30 (soaked since 2026-08-18); also
+        # explicitly allowlisted in config/config.yaml.
+        self.assertEqual(collector.tier, CollectorTier.PRODUCTION)
         self.assertEqual(len(result.observations), 4)
         by_title = {item.title: item for item in result.observations}
         self.assertEqual(

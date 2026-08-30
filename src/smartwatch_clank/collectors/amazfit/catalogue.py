@@ -56,7 +56,7 @@ def classify_product(title: str, product_type: str, tags: tuple[str, ...]) -> tu
 
 class AmazfitCatalogueCollector(Collector):
     name = "amazfit_catalogue"
-    tier = CollectorTier.EXPERIMENTAL
+    tier = CollectorTier.PRODUCTION
 
     def __init__(self, client: HttpClient | None = None, products_url: str = PRODUCTS_URL) -> None:
         self.client = client or UrlLibHttpClient()

@@ -87,7 +87,7 @@ def extract_families(title: str) -> tuple[str, ...]:
 
 class GarminUpdatesCollector(Collector):
     name = "garmin_updates"
-    tier = CollectorTier.EXPERIMENTAL
+    tier = CollectorTier.PRODUCTION
 
     def __init__(self, client: HttpClient | None = None,
                  families: dict[str, str] | None = None) -> None:

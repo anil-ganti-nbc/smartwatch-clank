@@ -85,10 +85,13 @@ class DefaultRegistryScopeTests(unittest.TestCase):
         self.assertEqual(
             experimental,
             {
-                "samsung_official_news", "google_official_news", "garmin_official_news", "apple_official_news",
-                "garmin_catalogue", "garmin_updates", "amazfit_official_news", "amazfit_catalogue",
-                "coros_support", "coros_updates", "coros_official_news",
-                "dcrainmaker_specialist",
+                # 2026-08-30 production promotion: 9 of the previous 12
+                # experimental collectors moved to PRODUCTION tier + allowlist
+                # (see docs/coros-updates-firmware-version-adjudication-
+                # 2026-08-30.md for the coros_updates blocker). Remaining in
+                # soak: the two relay-dependent www.garmin.com collectors
+                # (soak restarted 2026-08-29 18:42Z) and blocked coros_updates.
+                "garmin_official_news", "garmin_catalogue", "coros_updates",
             },
         )
 
