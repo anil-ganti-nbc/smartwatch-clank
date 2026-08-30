@@ -1,8 +1,8 @@
 # Ticket: Garmin egress relay — production lane wiring gap
 
-Status: REAL DEPLOYMENT DEFECT for the future production path; NO ISSUE for the current soak
-(no www.garmin.com collector is promoted today, and the soak timer path receives the relay
-configuration canonically). Planning artefact — no implementation yet.
+Status: RESOLVED 2026-08-30 — production runner wiring fixed (deploy/deploy_run.sh exports the
+canonical default; regression-tested). Soak path was never affected. Deployment contract pinned
+by tests/test_deployment_garmin_relay.py.
 
 ## Problem statement
 
