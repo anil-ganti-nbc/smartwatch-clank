@@ -165,7 +165,13 @@ class CorosUpdatesCollectorTests(unittest.TestCase):
         self.assertEqual(by_id["coros:update:month:1010"].payload["scope"], "fleet_wide")
         self.assertEqual(result.metadata["monthly_sections"], 2)
 
-    def test_firmware_version_proxy_triggers_change_detection_on_update(self):
+    def test_article_timestamp_sweep_does_not_imply_firmware_release(self):
+        # Regression for the 2026-08-28T18:43:09Z incident: one site-wide
+        # Zendesk touch sweep moved every article's `updated_at` and the old
+        # collector mapped those timestamps into `firmware_version`, emitting
+        # 23 simultaneous FIRMWARE_RELEASED/HIGH events that were not 23 real
+        # firmware releases. Invariant: an article maintenance timestamp
+        # changing MUST NOT imply firmware released.
         from smartwatch_clank.core.diff import diff_catalogues
 
         release_notes_url = ARTICLES_URL_TEMPLATE.format(section_id=1009)
@@ -174,14 +180,83 @@ class CorosUpdatesCollectorTests(unittest.TestCase):
         }))
         first = {item.identity: item for item in collector.run().observations}
         updated_articles = release_notes_json()
-        updated_articles["articles"][0]["updated_at"] = "2026-09-01T00:00:00Z"
+        for article in updated_articles["articles"]:
+            article["updated_at"] = "2026-09-01T00:00:00Z"
         collector2 = CorosUpdatesCollector(JsonFixtureClient({
             SECTIONS_URL: sections_json(), release_notes_url: updated_articles,
         }))
         second = {item.identity: item for item in collector2.run().observations}
+        self.assertTrue(set(first) == set(second))
+        for item in second.values():
+            self.assertIsNone(item.firmware_version)
         discoveries = diff_catalogues(first, second)
-        pace4_discovery = next(d for d in discoveries if d.identity == "coros:update:2001")
-        self.assertEqual(pace4_discovery.change_type.value, "FIRMWARE_RELEASED")
+        firmware_discoveries = [d for d in discoveries if d.change_type.value == "FIRMWARE_RELEASED"]
+        self.assertEqual(firmware_discoveries, [])
+
+    def test_ordinary_resight_emits_no_events(self):
+        from smartwatch_clank.core.diff import diff_catalogues
+
+        release_notes_url = ARTICLES_URL_TEMPLATE.format(section_id=1009)
+        collector = CorosUpdatesCollector(JsonFixtureClient({
+            SECTIONS_URL: sections_json(), release_notes_url: release_notes_json(),
+        }))
+        first = {item.identity: item for item in collector.run().observations}
+        second = {item.identity: item for item in collector.run().observations}
+        self.assertEqual(diff_catalogues(first, second), [])
+
+    def test_first_repaired_cycle_against_prefx_persisted_state_emits_no_events(self):
+        # The one-time transition rewrites firmware_version -> null inside the
+        # persisted last-healthy-run rows for this collector (see
+        # docs/ticket-coros-updates-firmware-novelty.md). This test proves the
+        # migration semantics: hydrated pre-fix state (timestamp-shaped
+        # firmware_version, as stored before the repair) is nullified by the
+        # transition and the first repaired cycle then diffs clean, with no
+        # loss of identity/history. Without the transition the same cycle
+        # WOULD emit FIRMWARE_RELEASED for every identity (the hazard this
+        # migration exists to prevent).
+        from smartwatch_clank.core.diff import diff_catalogues
+        from smartwatch_clank.core.models import Observation
+
+        release_notes_url = ARTICLES_URL_TEMPLATE.format(section_id=1009)
+        collector = CorosUpdatesCollector(JsonFixtureClient({
+            SECTIONS_URL: sections_json(), release_notes_url: release_notes_json(),
+        }))
+        current = {item.identity: item for item in collector.run().observations}
+        pre_fix = {}
+        for identity, item in current.items():
+            pre_fix[identity] = Observation(
+                **{**{f: getattr(item, f) for f in item.__dataclass_fields__ if f != "firmware_version"},
+                   "firmware_version": "2026-08-28T17:53:02Z"}
+            )
+        self.assertTrue(set(pre_fix) == set(current))
+        # hazard demonstration: WITHOUT the transition this diff bursts
+        hazard = [d for d in diff_catalogues(pre_fix, current) if d.change_type.value == "FIRMWARE_RELEASED"]
+        self.assertEqual(len(hazard), len(current))
+        # with the documented transition applied to the persisted rows:
+        transitioned = {
+            identity: Observation(
+                **{**{f: getattr(item, f) for f in item.__dataclass_fields__ if f != "firmware_version"},
+                   "firmware_version": None}
+            )
+            for identity, item in pre_fix.items()
+        }
+        discoveries = diff_catalogues(transitioned, current)
+        self.assertEqual(discoveries, [])
+        self.assertEqual(set(transitioned), set(current))
+
+    def test_no_real_firmware_version_payload_is_parsed(self):
+        # Verdict C (docs/ticket-coros-updates-firmware-novelty.md): the
+        # section/article endpoints this collector reads expose no firmware
+        # version payload, so genuine-version detection (and its regression
+        # test) is intentionally absent. This pins that no timestamp-derived
+        # firmware_version value is fabricated instead.
+        release_notes_url = ARTICLES_URL_TEMPLATE.format(section_id=1009)
+        collector = CorosUpdatesCollector(JsonFixtureClient({
+            SECTIONS_URL: sections_json(), release_notes_url: release_notes_json(),
+        }))
+        result = collector.run()
+        self.assertTrue(all(item.firmware_version is None for item in result.observations))
+        self.assertTrue(all("updated_at" not in item.payload for item in result.observations))
 
 
 class ParseStoriesTests(unittest.TestCase):

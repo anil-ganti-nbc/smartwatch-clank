@@ -11,6 +11,17 @@ release-notes article becomes one Observation with an `affected_devices`
 list parsed from its title, and each monthly section becomes one
 fleet-wide-scoped Observation, rather than fetching and diffing every
 article inside every monthly section.
+
+Invariant (2026-08-30 repair of the 2026-08-28 23-event false
+FIRMWARE_RELEASED burst): the Zendesk `updated_at` editorial timestamp is
+NEVER stored on the observation. `Observation.comparable()` diffs every
+model field, so any publisher timestamp stored here would classify a
+site-wide article touch as fleet-wide firmware releases. Article novelty
+is identity-based only. No real firmware-version payload is exposed by
+the section/article endpoints this collector reads (verdict C in
+docs/ticket-coros-updates-firmware-novelty.md); if one ever is, real
+firmware detection must be built on that parsed payload, not on
+maintenance timestamps.
 """
 
 from __future__ import annotations
@@ -74,7 +85,7 @@ class CorosUpdatesCollector(Collector):
                     collector=self.name, identity=identity, source_url=article.get("html_url") or articles_url,
                     observed_at=context.started_at, source_kind="software_update",
                     source_class=SourceClass.SOFTWARE_UPDATE.value, oem="coros",
-                    title=article.get("title"), firmware_version=article.get("updated_at"),
+                    title=article.get("title"),
                     payload={"affected_devices": list(affected_devices), "scope": "per_device"},
                 )
         monthly_count = 0
@@ -88,7 +99,7 @@ class CorosUpdatesCollector(Collector):
                 collector=self.name, identity=identity, source_url=section.get("html_url") or self.sections_url,
                 observed_at=context.started_at, source_kind="software_update",
                 source_class=SourceClass.SOFTWARE_UPDATE.value, oem="coros",
-                title=name, firmware_version=section.get("updated_at"),
+                title=name,
                 payload={"affected_devices": [], "scope": "fleet_wide"},
             )
         return CollectorResult(

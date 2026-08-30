@@ -139,6 +139,9 @@ class Observation:
     currency: str | None = None
     availability: str | None = None
     specifications: dict[str, Any] = field(default_factory=dict)
+    # Provenance-only field: comparable() diffs it and a delta classifies
+    # FIRMWARE_RELEASED, so never populate it from publisher-maintained
+    # timestamps (docs/ticket-coros-updates-firmware-novelty.md).
     firmware_version: str | None = None
     software_version: str | None = None
     support_metadata: dict[str, Any] = field(default_factory=dict)
