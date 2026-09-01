@@ -11,6 +11,7 @@ from .core.lock import RunLock, RunLockError
 from .core.models import RunScope
 from .core.registry import CollectorRegistry
 from .core.runner import Runner, RunProvenance
+from .core.qualification import ExecutionProvenance
 from .core.soak import prepare_soak_cycle
 from .core.store import SQLiteStore
 from .intelligence.news import persist_news_evidence
@@ -27,6 +28,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run", help="run registered collectors")
     run.add_argument("--mode", choices=[scope.value for scope in RunScope], default="production")
+    run.add_argument("--trigger", choices=[item.value for item in ExecutionProvenance],
+                     default=ExecutionProvenance.MANUAL.value,
+                     help="authoritative execution trigger; scheduler wrappers pass SCHEDULED")
     run.add_argument("--no-lock", action="store_true", help="debug only: bypass the database run lock")
     run.add_argument("--allow-experimental-database", action="store_true", help="debug only: permit production mode on an experimental-named database")
     sub.add_parser("identity", help="show runtime identity, version, database, and config provenance")
@@ -119,6 +123,7 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
                     app_version=runtime_identity["version"],
                     config_fingerprint=config.config_fingerprint,
                     git_revision=runtime_identity["source_revision"],
+                    trigger=args.trigger,
                 )
                 outcomes = Runner(registry, store, config.runner, provenance).run(
                     RunScope(args.mode), production_allowlist=config.production_allowlist,
@@ -137,7 +142,8 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
                         observations = store.latest_healthy_observations((name,))
                         official_news_evidence[name] = persist_news_evidence(store, observations)
                 _print({
-                    "mode": args.mode, "database": str(database), "lock_enabled": not args.no_lock,
+                    "mode": args.mode, "trigger": provenance.trigger.value,
+                    "database": str(database), "lock_enabled": not args.no_lock,
                     "cycle": run_metadata,
                     "collectors_run": len(outcomes), "healthy": sum(item.healthy for item in outcomes),
                     "failed": sum(not item.healthy for item in outcomes), "samsung_reconciliation": reconciliation,

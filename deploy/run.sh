@@ -48,4 +48,4 @@ export IMAGE_TAG="$(cat .deployed-id)"
 exec docker compose -f docker-compose.staging.yml run --rm \
     -e SMARTWATCH_CLANK_HOST_ID="${SMARTWATCH_CLANK_HOST_ID:-hetzner-clank-fleet-01}" \
     -e SMARTWATCH_CLANK_GARMIN_PROXY="${SMARTWATCH_CLANK_GARMIN_PROXY-http://host.docker.internal:18889}" \
-    smartwatch-clank run --mode experimental
+    smartwatch-clank run --mode experimental --trigger SCHEDULED

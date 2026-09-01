@@ -19,4 +19,4 @@ IMAGE_TAG="$(cat .deployed-id)"
 # so an explicit empty disable is honoured.
 export SMARTWATCH_CLANK_GARMIN_PROXY="${SMARTWATCH_CLANK_GARMIN_PROXY-http://host.docker.internal:18889}"
 
-exec docker compose -f docker-compose.staging.yml run --rm smartwatch-clank
+exec docker compose -f docker-compose.staging.yml run --rm smartwatch-clank run --mode production --trigger SCHEDULED

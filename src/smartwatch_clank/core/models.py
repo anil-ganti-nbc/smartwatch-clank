@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Any
 
+from .qualification import ExecutionProvenance
+
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)

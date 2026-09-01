@@ -30,7 +30,10 @@ def main() -> int:
         if datetime.fromtimestamp(item.stat().st_mtime, timezone.utc) < cutoff:
             item.unlink()
     log_path = log_directory / f"smartwatch-clank-{datetime.now().date().isoformat()}.log"
-    command = [sys.executable, "-m", "smartwatch_clank.cli", "run", "--mode", "production"]
+    # This tracked scheduler launcher is the authority that can assert a
+    # scheduled trigger. Direct CLI/library callers remain MANUAL/UNKNOWN.
+    command = [sys.executable, "-m", "smartwatch_clank.cli", "run",
+               "--mode", "production", "--trigger", "SCHEDULED"]
     started = datetime.now(timezone.utc)
     database = load_runtime_config().database.resolve()
     with log_path.open("a", encoding="utf-8", newline="\n") as log:

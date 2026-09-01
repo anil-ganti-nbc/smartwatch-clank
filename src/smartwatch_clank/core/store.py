@@ -9,6 +9,14 @@ from pathlib import Path
 from typing import Any
 
 from .models import Discovery, HealthRecord, Observation
+from .qualification import (
+    ExecutionProvenance,
+    QualificationEpoch,
+    QualificationGate,
+    QualificationMaterial,
+    normalize_provenance,
+    new_epoch_id,
+)
 
 
 def _json(value: Any) -> str:
@@ -19,7 +27,7 @@ class SQLiteStore:
     # Bumped whenever a schema change is made. Additive-only (CREATE TABLE IF
     # NOT EXISTS / guarded ALTER TABLE) so historical data is never dropped;
     # see the Expansion Stage A report for what each version added.
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     def __init__(self, path: Path | str, *, read_only: bool = False) -> None:
         self.path = Path(path)
@@ -126,13 +134,34 @@ class SQLiteStore:
                 id INTEGER PRIMARY KEY, evidence_id INTEGER NOT NULL REFERENCES evidence_records(id),
                 observed_at TEXT NOT NULL, event TEXT NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}'
             );
+            CREATE TABLE IF NOT EXISTS qualification_epochs (
+                id INTEGER PRIMARY KEY, collector TEXT NOT NULL, epoch_id TEXT NOT NULL,
+                material_identity TEXT NOT NULL, material_components_json TEXT NOT NULL DEFAULT '{}',
+                started_at TEXT NOT NULL, created_by_execution_id TEXT NOT NULL,
+                provenance TEXT NOT NULL, reason TEXT NOT NULL,
+                previous_epoch_id TEXT, previous_material_identity TEXT,
+                UNIQUE(collector, epoch_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_qualification_epochs_current
+                ON qualification_epochs(collector, id);
+            CREATE TABLE IF NOT EXISTS qualification_events (
+                id INTEGER PRIMARY KEY, collector TEXT NOT NULL, event_type TEXT NOT NULL,
+                execution_id TEXT NOT NULL, epoch_id TEXT NOT NULL, material_identity TEXT NOT NULL,
+                material_components_json TEXT NOT NULL DEFAULT '{}', provenance TEXT NOT NULL,
+                healthy INTEGER, reason TEXT NOT NULL DEFAULT '',
+                previous_epoch_id TEXT, previous_material_identity TEXT, occurred_at TEXT NOT NULL,
+                UNIQUE(collector, event_type, execution_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_qualification_events_epoch
+                ON qualification_events(collector, epoch_id, event_type, id);
         """)
         columns = {row[1] for row in self.connection.execute("PRAGMA table_info(runs)")}
         if "metadata_json" not in columns:
             self.connection.execute("ALTER TABLE runs ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'")
         if "discovery_count" not in columns:
             self.connection.execute("ALTER TABLE runs ADD COLUMN discovery_count INTEGER NOT NULL DEFAULT 0")
-        for extra_column in ("run_uuid", "app_version", "schema_version_at_run", "config_fingerprint", "git_revision"):
+        for extra_column in ("run_uuid", "app_version", "schema_version_at_run", "config_fingerprint", "git_revision",
+                             "execution_provenance", "qualification_epoch_id", "material_identity"):
             if extra_column not in columns:
                 self.connection.execute(f"ALTER TABLE runs ADD COLUMN {extra_column} TEXT")
         self.connection.execute(
@@ -146,6 +175,148 @@ class SQLiteStore:
     def get_soak_state(self, key: str) -> str | None:
         row = self.connection.execute("SELECT value FROM soak_state WHERE key=?", (key,)).fetchone()
         return row["value"] if row else None
+
+    def prepare_qualification(self, *, collector: str, execution_id: str,
+                              material: QualificationMaterial,
+                              provenance: ExecutionProvenance | str | None,
+                              started_at: datetime) -> QualificationEpoch:
+        """Return the active qualification epoch, appending a reset when needed.
+
+        This is called after the execution UUID/provenance exists and before
+        the runner reads any prior healthy catalogue. The reset event is
+        durable and linked to the execution UUID; terminal evidence is written
+        separately after the run finishes.
+        """
+        trigger = normalize_provenance(provenance)
+        started_iso = started_at.isoformat()
+        components_json = _json(material.components())
+        with self.connection:
+            current = self.connection.execute(
+                "SELECT * FROM qualification_epochs WHERE collector=? ORDER BY id DESC LIMIT 1",
+                (collector,),
+            ).fetchone()
+            if current is not None and current["material_identity"] == material.identity():
+                return self._qualification_epoch_from_row(current)
+            previous_epoch_id = current["epoch_id"] if current is not None else None
+            previous_material_identity = current["material_identity"] if current is not None else None
+            reason = "INITIAL_MATERIAL_IDENTITY" if current is None else "MATERIAL_IDENTITY_CHANGED"
+            epoch_id = new_epoch_id(collector)
+            self.connection.execute(
+                "INSERT INTO qualification_epochs("
+                "collector,epoch_id,material_identity,material_components_json,started_at,"
+                "created_by_execution_id,provenance,reason,previous_epoch_id,previous_material_identity"
+                ") VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (collector, epoch_id, material.identity(), components_json, started_iso,
+                 execution_id, trigger.value, reason, previous_epoch_id, previous_material_identity),
+            )
+            event_type = "EPOCH_STARTED" if current is None else "RESET"
+            self.connection.execute(
+                "INSERT INTO qualification_events("
+                "collector,event_type,execution_id,epoch_id,material_identity,"
+                "material_components_json,provenance,healthy,reason,previous_epoch_id,"
+                "previous_material_identity,occurred_at"
+                ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (collector, event_type, execution_id, epoch_id, material.identity(),
+                 components_json, trigger.value, None, reason, previous_epoch_id,
+                 previous_material_identity, started_iso),
+            )
+            row = self.connection.execute(
+                "SELECT * FROM qualification_epochs WHERE collector=? AND epoch_id=?",
+                (collector, epoch_id),
+            ).fetchone()
+            assert row is not None
+            return self._qualification_epoch_from_row(row)
+
+    @staticmethod
+    def _qualification_epoch_from_row(row: sqlite3.Row) -> QualificationEpoch:
+        return QualificationEpoch(
+            collector=row["collector"],
+            epoch_id=row["epoch_id"],
+            material_identity=row["material_identity"],
+            started_at=row["started_at"],
+            execution_id=row["created_by_execution_id"],
+            provenance=normalize_provenance(row["provenance"]),
+            reason=row["reason"],
+            previous_epoch_id=row["previous_epoch_id"],
+            previous_material_identity=row["previous_material_identity"],
+        )
+
+    def record_qualification_terminal(self, *, collector: str, execution_id: str,
+                                      epoch_id: str, material: QualificationMaterial,
+                                      provenance: ExecutionProvenance | str | None,
+                                      healthy: bool, finished_at: datetime) -> None:
+        """Persist terminal qualification evidence independently and idempotently."""
+        trigger = normalize_provenance(provenance)
+        with self.connection:
+            self.connection.execute(
+                "INSERT OR IGNORE INTO qualification_events("
+                "collector,event_type,execution_id,epoch_id,material_identity,"
+                "material_components_json,provenance,healthy,reason,previous_epoch_id,"
+                "previous_material_identity,occurred_at"
+                ") VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (collector, "TERMINAL", execution_id, epoch_id, material.identity(),
+                 _json(material.components()), trigger.value, int(healthy),
+                 "HEALTHY" if healthy else "FAILED", None, None, finished_at.isoformat()),
+            )
+
+    def qualification_gate(self, collector: str, *, epoch_id: str | None = None,
+                           material_identity: str | None = None) -> QualificationGate:
+        """Read the durable gate decision without inventing missing provenance."""
+        current = self.connection.execute(
+            "SELECT * FROM qualification_epochs WHERE collector=? ORDER BY id DESC LIMIT 1",
+            (collector,),
+        ).fetchone()
+        if current is None:
+            return QualificationGate(collector, None, material_identity, False, "NO_ACTIVE_EPOCH")
+        active_epoch = current["epoch_id"]
+        active_material = current["material_identity"]
+        if epoch_id is not None and epoch_id != active_epoch:
+            return QualificationGate(collector, active_epoch, active_material, False, "STALE_EPOCH")
+        if material_identity is not None and material_identity != active_material:
+            return QualificationGate(collector, active_epoch, active_material, False, "MATERIAL_IDENTITY_MISMATCH")
+        terminal = self.connection.execute(
+            "SELECT execution_id,provenance,healthy,material_identity,material_components_json FROM qualification_events "
+            "WHERE collector=? AND event_type='TERMINAL' AND epoch_id=? ORDER BY id DESC LIMIT 1",
+            (collector, active_epoch),
+        ).fetchone()
+        if terminal is None:
+            return QualificationGate(collector, active_epoch, active_material, False, "NO_TERMINAL_EVIDENCE")
+        trigger = normalize_provenance(terminal["provenance"])
+        if trigger is ExecutionProvenance.UNKNOWN:
+            return QualificationGate(collector, active_epoch, active_material, False, "UNKNOWN_PROVENANCE",
+                                     terminal["execution_id"])
+        try:
+            components = json.loads(terminal["material_components_json"] or "{}")
+        except (TypeError, json.JSONDecodeError):
+            return QualificationGate(collector, active_epoch, active_material, False,
+                                     "MALFORMED_MATERIAL_IDENTITY", terminal["execution_id"])
+        if not (
+            components.get("app_version")
+            and components.get("config_fingerprint")
+            and components.get("git_revision")
+            and str(components["git_revision"]).lower() != "unknown"
+        ):
+            return QualificationGate(collector, active_epoch, active_material, False,
+                                     "UNTRUSTWORTHY_MATERIAL_IDENTITY", terminal["execution_id"])
+        if not terminal["healthy"]:
+            return QualificationGate(collector, active_epoch, active_material, False, "LATEST_EXECUTION_UNHEALTHY",
+                                     terminal["execution_id"])
+        if terminal["material_identity"] != active_material:
+            return QualificationGate(collector, active_epoch, active_material, False,
+                                     "TERMINAL_MATERIAL_IDENTITY_MISMATCH", terminal["execution_id"])
+        return QualificationGate(collector, active_epoch, active_material, True, "QUALIFIED",
+                                 terminal["execution_id"])
+
+    def qualification_events(self, collector: str | None = None) -> tuple[dict[str, Any], ...]:
+        query = "SELECT * FROM qualification_events"
+        params: tuple[object, ...] = ()
+        if collector is not None:
+            query += " WHERE collector=?"
+            params = (collector,)
+        query += " ORDER BY id"
+        return tuple(dict(row) for row in self.connection.execute(query, params).fetchall())
+
+
 
     def set_soak_state(self, key: str, value: str) -> None:
         with self.connection:
@@ -182,10 +353,14 @@ class SQLiteStore:
                 temporary.unlink()
         return target
 
-    def last_healthy_catalogue(self, collector: str) -> dict[str, Observation]:
-        run = self.connection.execute(
-            "SELECT id FROM runs WHERE collector=? AND healthy=1 ORDER BY id DESC LIMIT 1", (collector,)
-        ).fetchone()
+    def last_healthy_catalogue(self, collector: str, *, qualification_epoch_id: str | None = None) -> dict[str, Observation]:
+        query = "SELECT id FROM runs WHERE collector=? AND healthy=1"
+        params: list[object] = [collector]
+        if qualification_epoch_id is not None:
+            query += " AND qualification_epoch_id=?"
+            params.append(qualification_epoch_id)
+        query += " ORDER BY id DESC LIMIT 1"
+        run = self.connection.execute(query, params).fetchone()
         if run is None:
             return {}
         rows = self.connection.execute(
@@ -193,25 +368,33 @@ class SQLiteStore:
         ).fetchall()
         return {item.identity: item for item in (self._decode_observation(row["data_json"]) for row in rows)}
 
-    def has_healthy_run(self, collector: str) -> bool:
-        return self.connection.execute(
-            "SELECT 1 FROM runs WHERE collector=? AND healthy=1 LIMIT 1", (collector,)
-        ).fetchone() is not None
+    def has_healthy_run(self, collector: str, *, qualification_epoch_id: str | None = None) -> bool:
+        query = "SELECT 1 FROM runs WHERE collector=? AND healthy=1"
+        params: list[object] = [collector]
+        if qualification_epoch_id is not None:
+            query += " AND qualification_epoch_id=?"
+            params.append(qualification_epoch_id)
+        query += " LIMIT 1"
+        return self.connection.execute(query, params).fetchone() is not None
 
     def save_run(self, *, collector: str, started_at: datetime, finished_at: datetime, healthy: bool,
                  observations: tuple[Observation, ...], discoveries: list[Discovery],
                  warning: str | None, error: str | None, metadata: dict[str, Any] | None = None,
                  run_uuid: str | None = None, app_version: str | None = None,
                  schema_version_at_run: int | None = None, config_fingerprint: str | None = None,
-                 git_revision: str | None = None) -> int:
+                 git_revision: str | None = None, execution_provenance: ExecutionProvenance | str | None = None,
+                 qualification_epoch_id: str | None = None, material_identity: str | None = None) -> int:
+        trigger = normalize_provenance(execution_provenance)
         with self.connection:
             cursor = self.connection.execute(
                 "INSERT INTO runs(collector,started_at,finished_at,healthy,observation_count,warning,error,"
                 "metadata_json,discovery_count,run_uuid,app_version,schema_version_at_run,config_fingerprint,"
-                "git_revision) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "git_revision,execution_provenance,qualification_epoch_id,material_identity) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (collector, started_at.isoformat(), finished_at.isoformat(), int(healthy), len(observations), warning, error,
                  _json(metadata or {}), len(discoveries), run_uuid, app_version,
-                 schema_version_at_run, config_fingerprint, git_revision),
+                 schema_version_at_run, config_fingerprint, git_revision, trigger.value,
+                 qualification_epoch_id, material_identity),
             )
             run_id = int(cursor.lastrowid)
             if healthy:

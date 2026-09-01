@@ -23,7 +23,8 @@ class WindowsAutomationTests(unittest.TestCase):
         self.assertNotIn("--mode experimental", script)
         self.assertIn(".venv\\Scripts\\python.exe", script)
         portable = (ROOT / "src" / "smartwatch_clank" / "soak_runner.py").read_text(encoding="utf-8")
-        self.assertIn('"smartwatch_clank.cli", "run", "--mode", "production"', portable)
+        self.assertIn('"smartwatch_clank.cli", "run",', portable)
+        self.assertIn('"--mode", "production", "--trigger", "SCHEDULED"', portable)
         self.assertIn("load_runtime_config().database.resolve()", portable)
 
     def test_installation_is_one_task_with_twelve_daily_triggers_and_ignore_new(self):
@@ -67,7 +68,10 @@ class WindowsAutomationTests(unittest.TestCase):
                     patch.object(soak_runner.subprocess, "Popen", return_value=FakeProcess()) as popen:
                 self.assertEqual(soak_runner.main(), 0)
             command = popen.call_args.args[0]
-            self.assertEqual(command[1:], ["-m", "smartwatch_clank.cli", "run", "--mode", "production"])
+            self.assertEqual(command[1:], [
+                "-m", "smartwatch_clank.cli", "run", "--mode", "production",
+                "--trigger", "SCHEDULED",
+            ])
             logs = list((root / "var" / "logs" / "soak").glob("smartwatch-clank-*.log"))
             self.assertEqual(len(logs), 1)
             self.assertIn("cycle_finish exit_status=0", logs[0].read_text(encoding="utf-8"))

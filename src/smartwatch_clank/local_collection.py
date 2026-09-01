@@ -4,9 +4,21 @@ import threading
 from datetime import datetime, timezone
 
 from .core.lock import RunLock, RunLockError
-from .core.runner import Runner
+from .core.qualification import ExecutionProvenance
+from .core.runner import RunProvenance, Runner
 from .core.store import SQLiteStore
 from .intelligence.samsung import persist_samsung_reconciliation, reconcile_samsung
+from .runtime_bridge import identity
+
+
+def _manual_provenance(config) -> RunProvenance:
+    runtime = identity()
+    return RunProvenance(
+        app_version=runtime["version"],
+        config_fingerprint=config.config_fingerprint,
+        git_revision=runtime["source_revision"],
+        trigger=ExecutionProvenance.MANUAL,
+    )
 
 
 class LocalCollectionController:
@@ -36,7 +48,8 @@ class LocalCollectionController:
                                message="Collecting from the public source…")
         try:
             with RunLock(self.config.database), SQLiteStore(self.config.database) as store:
-                outcomes = Runner(self.registry, store, self.config.runner).run_selected(
+                outcomes = Runner(self.registry, store, self.config.runner,
+                                  _manual_provenance(self.config)).run_selected(
                     (source,), self.allowed, {"mode":"field_test_manual"}
                 )
                 reconciliation = None
@@ -86,7 +99,8 @@ def run_finalized(config, registry, names: tuple[str, ...] | None = None) -> dic
     allowed = tuple(config.production_allowlist)
     selected = names if names is not None else allowed
     with RunLock(config.database), SQLiteStore(config.database) as store:
-        outcomes = Runner(registry, store, config.runner).run_selected(
+        outcomes = Runner(registry, store, config.runner,
+                          _manual_provenance(config)).run_selected(
             selected, allowed, {"mode": "field_test_run_finalized"}
         )
         reconciliation = None

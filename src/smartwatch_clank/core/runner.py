@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from .diff import diff_catalogues
 from .health import CatalogueHealthError, SourceHealthError, assess_catalogue
 from .models import CollectorTier, HealthRecord, RunOutcome, RunScope, utc_now
+from .qualification import ExecutionProvenance, QualificationMaterial, normalize_provenance
 from .registry import CollectorRegistry
 from .store import SQLiteStore
 
@@ -34,6 +35,10 @@ class RunProvenance:
     app_version: str | None = None
     config_fingerprint: str | None = None
     git_revision: str | None = None
+    trigger: ExecutionProvenance | str = ExecutionProvenance.UNKNOWN
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "trigger", normalize_provenance(self.trigger))
 
 
 class Runner:
@@ -46,7 +51,7 @@ class Runner:
 
     def run(self, scope: RunScope, production_allowlist: tuple[str, ...] = (),
             run_metadata: dict | None = None) -> list[RunOutcome]:
-        return [self._run_one(collector, run_metadata or {})
+        return [self._run_one(collector, run_metadata or {}, scope=scope.value)
                 for collector in self.registry.selected(scope, production_allowlist)]
 
     def run_selected(self, names: tuple[str, ...], production_allowlist: tuple[str, ...],
@@ -59,14 +64,30 @@ class Runner:
             if collector.tier is not CollectorTier.PRODUCTION or name not in allowed:
                 raise ValueError(f"collector is not production-enabled: {name}")
             collectors.append(collector)
-        return [self._run_one(collector, run_metadata or {}) for collector in collectors]
+        return [self._run_one(collector, run_metadata or {}, scope=RunScope.PRODUCTION.value)
+                for collector in collectors]
 
-    def _run_one(self, collector, run_metadata: dict) -> RunOutcome:
+    def _run_one(self, collector, run_metadata: dict, *, scope: str) -> RunOutcome:
         started = utc_now()
         run_uuid = str(uuid.uuid4())
+        material = QualificationMaterial(
+            app_version=self.provenance.app_version,
+            config_fingerprint=self.provenance.config_fingerprint,
+            git_revision=self.provenance.git_revision,
+            schema_version=self.store.SCHEMA_VERSION,
+            execution_scope=scope,
+        )
+        epoch = self.store.prepare_qualification(
+            collector=collector.name, execution_id=run_uuid, material=material,
+            provenance=self.provenance.trigger, started_at=started,
+        )
         attempted_count = 0
-        previous = self.store.last_healthy_catalogue(collector.name)
-        previous_count = len(previous) if self.store.has_healthy_run(collector.name) else None
+        previous = self.store.last_healthy_catalogue(
+            collector.name, qualification_epoch_id=epoch.epoch_id
+        )
+        previous_count = len(previous) if self.store.has_healthy_run(
+            collector.name, qualification_epoch_id=epoch.epoch_id
+        ) else None
         try:
             result = collector.run()
             attempted_count = len(result.observations)
@@ -93,7 +114,15 @@ class Runner:
                                 run_uuid=run_uuid, app_version=self.provenance.app_version,
                                 schema_version_at_run=self.store.SCHEMA_VERSION,
                                 config_fingerprint=self.provenance.config_fingerprint,
-                                git_revision=self.provenance.git_revision)
+                                git_revision=self.provenance.git_revision,
+                                execution_provenance=self.provenance.trigger,
+                                qualification_epoch_id=epoch.epoch_id,
+                                material_identity=material.identity())
+            self.store.record_qualification_terminal(
+                collector=collector.name, execution_id=run_uuid, epoch_id=epoch.epoch_id,
+                material=material, provenance=self.provenance.trigger, healthy=True,
+                finished_at=finished,
+            )
             self.store.save_health(HealthRecord(collector.name, True, len(result.observations), previous_count,
                                                 warning=assessment.warning, checked_at=finished))
             return RunOutcome(collector.name, True, baseline, len(result.observations), len(discoveries), assessment.warning)
@@ -110,7 +139,15 @@ class Runner:
                                 metadata=metadata, run_uuid=run_uuid, app_version=self.provenance.app_version,
                                 schema_version_at_run=self.store.SCHEMA_VERSION,
                                 config_fingerprint=self.provenance.config_fingerprint,
-                                git_revision=self.provenance.git_revision)
+                                git_revision=self.provenance.git_revision,
+                                execution_provenance=self.provenance.trigger,
+                                qualification_epoch_id=epoch.epoch_id,
+                                material_identity=material.identity())
+            self.store.record_qualification_terminal(
+                collector=collector.name, execution_id=run_uuid, epoch_id=epoch.epoch_id,
+                material=material, provenance=self.provenance.trigger, healthy=False,
+                finished_at=finished,
+            )
             self.store.save_health(HealthRecord(collector.name, False, attempted_count, previous_count,
                                                 error=detail, checked_at=finished))
             return RunOutcome(collector.name, False, False, attempted_count, 0, error=detail)
