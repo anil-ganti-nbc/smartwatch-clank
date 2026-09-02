@@ -78,13 +78,25 @@ One-line wrapper revert; no state, no image, no schedule impact.
 LOW.
 
 ---
-2026-09-02 reliability addendum: the relay outage root cause was the NAS
-tunnel container's ssh dying silently on ~6h NAT idle gaps (no effective
-client keepalive in the deployed command) and hanging as a dead tunnel
-while sshd held the stale `-R 18888` listener. Hetzner sshd now sets
-`ClientAliveInterval 15` / `ClientAliveCountMax 3` for `deploy`
-(kill->auto-recovery proven within 18s; see docs/garmin-egress-relay.md).
-REMAINING OPERATOR ACTION (requires NAS docker admin): add
-`-o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o
-ExitOnForwardFailure=yes` to the tunnel container's ssh command so the
-client side self-heals silent NAT deaths too.
+2026-09-02 reliability addendum — STATUS: `GARMIN_RELAY_REPAIR_PARTIAL`.
+
+The relay outage root cause was the NAS tunnel container's ssh session
+dying on the ~6h collector-idle gap (NAS power loss is the likely trigger;
+the missing client keepalives are why it hung instead of restarting) while
+sshd held the stale `-R 18888` listener.
+
+- Hetzner-side repair: COMPLETE (sshd now sets `ClientAliveInterval 15` /
+  `ClientAliveCountMax 3` for `deploy`; kill->auto-recovery proven within
+  18s; see docs/garmin-egress-relay.md).
+- NAS-side client keepalive repair: PENDING OPERATOR ACCESS. The tunnel
+  container's ssh command must add `-o ServerAliveInterval=30 -o
+  ServerAliveCountMax=3 -o ExitOnForwardFailure=yes` (requires NAS docker
+  admin) so the client detects its own dead path and exits promptly
+  instead of depending on Hetzner to clean it up.
+
+**Qualification window: NOT STARTED.** The window begins with the first
+successful NATURAL 6-hour soak cycle only after the NAS-side flags are
+deployed; cycles fired before that do NOT count toward the 12-cycle
+requirement (they would qualify the old incomplete relay). The relay
+outage itself may have originated from a NAS power loss — this is
+infrastructure qualification, not a Garmin collector problem.

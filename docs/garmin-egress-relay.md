@@ -150,9 +150,13 @@ Two-part repair:
    Without this, a silent NAT death still hangs the client indefinitely
    (server-side reaping alone cannot wake it).
 
-Until (2) is applied, a silent NAT death requires a manual container
-restart on the NAS; the Hetzner-side listener will, however, always be
-freed within ~45s of the session's death.
+Until (2) is applied, the repair is PARTIAL
+(`GARMIN_RELAY_REPAIR_PARTIAL`, operator decision 2026-08-31): a silent
+NAT death still requires a manual container restart on the NAS, and the
+Garmin qualification window is NOT STARTED — the 12-cycle count begins
+only with the first successful natural cycle after (2) is deployed.
+The Hetzner-side listener will always be freed within ~45s of the
+session's death.
 
 ## Why NAS over Windows
 
