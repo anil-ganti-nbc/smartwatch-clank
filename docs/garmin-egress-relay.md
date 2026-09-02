@@ -124,6 +124,36 @@ the script can't get past its own DB-backup step otherwise:
   arguably wrong (it never writes to the source database), but that's out
   of scope for this change.
 
+## Self-healing (2026-09-02)
+
+Observed failure mode: the tunnel container's SSH session dies silently on
+the ~6h collector-idle gap (NAT mapping expiry on the residential path) —
+the client never notices (no effective client keepalive in the deployed
+command) and hangs as a "healthy-looking dead tunnel", while sshd keeps the
+stale `-R 18888` listener bound for hours, blocking the container's own
+restart cycle from rebinding. Result: multi-hour relay outages
+(Sep 1-2 2026: five natural-cycle failures).
+
+Two-part repair:
+
+1. **Hetzner sshd (applied 2026-09-02)**: `Match User deploy` now sets
+   `ClientAliveInterval 15` / `ClientAliveCountMax 3` — sshd probes deploy
+   sessions every 15s and reaps half-open ones within ~45s, freeing the
+   stale listener immediately. Verified: killing the live tunnel session
+   produced container exit -> Docker restart -> fresh session + 18888
+   listener within 18s, end-to-end fetch 200.
+2. **NAS tunnel container (OPERATOR ACTION REQUIRED — needs NAS docker
+   admin)**: the deployed ssh command must add
+   `-o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o
+   ExitOnForwardFailure=yes` so the *client* detects silent NAT death,
+   exits, and lets the container's restart policy re-establish the tunnel.
+   Without this, a silent NAT death still hangs the client indefinitely
+   (server-side reaping alone cannot wake it).
+
+Until (2) is applied, a silent NAT death requires a manual container
+restart on the NAS; the Hetzner-side listener will, however, always be
+freed within ~45s of the session's death.
+
 ## Why NAS over Windows
 
 Windows was considered but not used: the fleet's standing rule is no

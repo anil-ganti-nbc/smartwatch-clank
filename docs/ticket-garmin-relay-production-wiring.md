@@ -76,3 +76,15 @@ One-line wrapper revert; no state, no image, no schedule impact.
 ## Risk level
 
 LOW.
+
+---
+2026-09-02 reliability addendum: the relay outage root cause was the NAS
+tunnel container's ssh dying silently on ~6h NAT idle gaps (no effective
+client keepalive in the deployed command) and hanging as a dead tunnel
+while sshd held the stale `-R 18888` listener. Hetzner sshd now sets
+`ClientAliveInterval 15` / `ClientAliveCountMax 3` for `deploy`
+(kill->auto-recovery proven within 18s; see docs/garmin-egress-relay.md).
+REMAINING OPERATOR ACTION (requires NAS docker admin): add
+`-o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o
+ExitOnForwardFailure=yes` to the tunnel container's ssh command so the
+client side self-heals silent NAT deaths too.
