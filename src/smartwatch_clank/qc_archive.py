@@ -87,9 +87,81 @@ class QCArchive:
         connection.row_factory = sqlite3.Row
         return connection
 
+    # M18 / STD-DEPLOY-COM-002: the archive is durable editorial evidence
+    # with exactly one schema shape and no version history, so its contract
+    # is the smallest honest one — read-only inspection first; a fresh file
+    # bootstraps canonically; the exact known qc_decisions shape proceeds
+    # unchanged; anything else is refused with evidence instead of being
+    # silently patched by CREATE TABLE IF NOT EXISTS.
+    _EXPECTED_TABLES = frozenset({"qc_decisions"})
+    _EXPECTED_COLUMNS = {
+        "qc_decisions": frozenset({
+            "id", "discovery_id", "run_id", "collector", "identity",
+            "change_type", "confidence", "editorial_level", "source_url",
+            "discovered_at", "previous_json", "current_json", "evidence_json",
+            "decision", "note", "decided_at", "decided_by",
+        }),
+    }
+
     def migrate(self) -> None:
+        from .core.schema_state import SchemaState, SchemaStateError, _verdict
+
+        def _inspect(con) -> str:
+            try:
+                if con.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+                    return "CORRUPT"
+                tables = {
+                    row[0] for row in con.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' "
+                        "AND name NOT LIKE 'sqlite_%'"
+                    )
+                }
+            except sqlite3.DatabaseError:
+                return "CORRUPT"
+            if not tables:
+                return "FRESH"
+            if tables != self._EXPECTED_TABLES:
+                return "UNKNOWN_OR_WRONG_SHAPE"
+            for table, required in self._EXPECTED_COLUMNS.items():
+                actual = {row[1] for row in con.execute(f"PRAGMA table_info({table})")}
+                if actual != required:
+                    return "UNKNOWN_OR_WRONG_SHAPE"
+            return "COMPATIBLE"
+
+        def _refusal(observed: str) -> SchemaStateError:
+            return SchemaStateError(_verdict(
+                SchemaState.CORRUPT if observed == "CORRUPT" else SchemaState.UNKNOWN,
+                1, None,
+                f"QC archive state is {observed}: the qc_decisions shape does "
+                "not match the expected single-table contract and was not "
+                "modified",
+                evidence={"store": "qc_archive", "compatibility_state": observed},
+            ))
+
+        state = "FRESH"
+        if self.path.exists():
+            ro = sqlite3.connect(f"file:{self.path.as_posix()}?mode=ro", uri=True)
+            try:
+                state = _inspect(ro)
+            finally:
+                ro.close()
+        if state == "COMPATIBLE":
+            return
+        if state != "FRESH":
+            raise _refusal(state)
         with self.connect() as con:
             con.executescript(_SCHEMA)
+        if self.path.exists():
+            ro = sqlite3.connect(f"file:{self.path.as_posix()}?mode=ro", uri=True)
+            try:
+                post = _inspect(ro)
+            finally:
+                ro.close()
+        else:
+            with self.connect() as con:
+                post = _inspect(con)
+        if post != "COMPATIBLE":
+            raise _refusal(f"POST_BOOTSTRAP_{post}")
 
     def decided_discovery_ids(self) -> set[int]:
         with self.connect() as con:

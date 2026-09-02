@@ -13,6 +13,7 @@ from .core.registry import CollectorRegistry
 from .core.runner import Runner, RunProvenance
 from .core.qualification import ExecutionProvenance
 from .core.soak import prepare_soak_cycle
+from .core.schema_state import SchemaStateError
 from .core.store import SQLiteStore
 from .intelligence.news import persist_news_evidence
 from .intelligence.samsung import persist_samsung_reconciliation, reconcile_samsung
@@ -116,7 +117,7 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
         continuity_module.ensure_registry(database)
         lock_context = nullcontext() if args.no_lock else RunLock(database)
         try:
-            with lock_context, SQLiteStore(database) as store:
+            with lock_context, SQLiteStore(database) as store:  # noqa: E501 (compatibility gate: may raise SchemaStateError -> handled below)
                 run_metadata = prepare_soak_cycle(store, mode=args.mode)
                 runtime_identity = identity()
                 provenance = RunProvenance(
@@ -155,6 +156,14 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
                     } for item in outcomes],
                 })
             return 1 if any(not item.healthy for item in outcomes) else 0
+        except SchemaStateError as exc:
+            _print({
+                "status": "state_incompatible",
+                "gate": "persistent_state_compatibility",
+                "database": str(database),
+                **exc.report.as_evidence(),
+            })
+            return 3
         except RunLockError as exc:
             _print({"status": "BLOCKED", "database": str(database), "error": str(exc)})
             return 2
@@ -193,7 +202,33 @@ def main(argv: list[str] | None = None, registry: CollectorRegistry | None = Non
             _print({"status": "BLOCKED", "database": str(database), "error": str(exc)})
             return 2
 
-    with SQLiteStore(database) as store:
+    # M18: these commands are inspection-class — read-only, never migrating,
+    # and refusing unadmittable state with evidence instead of serving it as
+    # fact (health on a genuinely fresh database reports "not initialized").
+    from .core.schema_state import SchemaState, UNADMITTABLE_STATES, inspect_store
+
+    report = inspect_store(database)
+    if report.state in UNADMITTABLE_STATES:
+        _print({
+            "status": "state_incompatible",
+            "gate": "persistent_state_compatibility",
+            "database": str(database),
+            **report.as_evidence(),
+        })
+        return 3
+    if report.state is SchemaState.FRESH:
+        if args.command == "health":
+            _print({
+                "status": "OK", "operational_state": "unknown",
+                "database": str(database),
+                "persistent_state": report.as_evidence(),
+                "note": "database not initialized yet; run a collection first",
+            })
+            return 0
+        _print({"status": "OK", "database": str(database),
+                "note": "database not initialized yet", "results": []})
+        return 0
+    with SQLiteStore(database, read_only=True) as store:
         if args.command == "health":
             output = health_report(store, registry, config)
         elif args.command == "discoveries":

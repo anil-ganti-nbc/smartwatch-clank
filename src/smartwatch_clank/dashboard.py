@@ -18,6 +18,7 @@ from urllib.parse import unquote, urlparse
 
 from .configuration import load_runtime_config
 from .core.lock import RunLockError
+from .core.schema_state import SchemaStateError
 from .core.store import SQLiteStore
 from .local_collection import run_finalized
 from .local_operator import request_is_local_operator_mutation
@@ -249,7 +250,16 @@ def serve(host: str="127.0.0.1", port: int=8300, controller=None, *, local_opera
                 discovery_id = int(raw_id)
                 if decision not in QC_DECISIONS:
                     self._json(400, {"error":"invalid_decision", "allowed": list(QC_DECISIONS)}); return
-                with SQLiteStore(config.database) as store:
+                try:
+                    store_cm = SQLiteStore(config.database)
+                except SchemaStateError as exc:
+                    self._json(503, {
+                        "error": "state_incompatible",
+                        "gate": "persistent_state_compatibility",
+                        **exc.report.as_evidence(),
+                    })
+                    return
+                with store_cm as store:
                     row = store.connection.execute(
                         "SELECT id,run_id,collector,identity,change_type,confidence,editorial_level,source_url,"
                         "discovered_at,previous_json,current_json,evidence_json FROM discoveries WHERE id=?",

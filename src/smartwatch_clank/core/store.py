@@ -17,6 +17,12 @@ from .qualification import (
     normalize_provenance,
     new_epoch_id,
 )
+from .schema_state import (
+    EXPECTED_SCHEMA_VERSION,
+    SchemaState,
+    SchemaStateError,
+    inspect_schema,
+)
 
 
 def _json(value: Any) -> str:
@@ -24,10 +30,13 @@ def _json(value: Any) -> str:
 
 
 class SQLiteStore:
-    # Bumped whenever a schema change is made. Additive-only (CREATE TABLE IF
+    # The expected persistent-state contract, in one authoritative place
+    # (re-exported from core.schema_state so the schema, the migration
+    # stamp, and the compatibility gate cannot drift apart). Bumped
+    # whenever a schema change is made. Additive-only (CREATE TABLE IF
     # NOT EXISTS / guarded ALTER TABLE) so historical data is never dropped;
     # see the Expansion Stage A report for what each version added.
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = EXPECTED_SCHEMA_VERSION
 
     def __init__(self, path: Path | str, *, read_only: bool = False) -> None:
         self.path = Path(path)
@@ -46,13 +55,96 @@ class SQLiteStore:
             # copies whatever schema already exists in the source, and
             # every real writer already runs _migrate() on its own
             # non-read-only SQLiteStore before this ever sees the file.
+            # M18: this makes read-only construction an inspection-class
+            # surface -- it never mutates and never gates; refusal of
+            # incompatible state happens in the read-write path and in
+            # the compatibility-aware commands.
             self.connection = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
             self.connection.row_factory = sqlite3.Row
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._admit_compatibility()
+
+    def _admit_compatibility(self) -> None:
+        """M18 / STD-DEPLOY-COM-002: construction is the barrier.
+
+        Read-only inspection decides BEFORE anything mutates: a compatible
+        store opens with zero schema writes; a genuinely fresh store
+        bootstraps through the canonical additive _migrate() and is
+        re-verified read-only; every other state (older marked, newer,
+        marker-less, partial, corrupt) raises SchemaStateError with full
+        evidence and leaves the file untouched. Ordinary construction can
+        therefore never launder unknown state toward "current", never
+        silently accepts a newer database, and can never be bypassed by
+        qualification, provenance, or run history — those all live inside
+        an admitted store. Sets self.connection on every admitted path.
+        """
+        from .schema_state import (
+            EXPECTED_SCHEMA_VERSION,
+            SchemaState,
+            SchemaStateError,
+            _verdict,
+            inspect_store,
+        )
+
+        if not self.path.exists():
+            self.connection = sqlite3.connect(self.path)
+            self.connection.row_factory = sqlite3.Row
+            try:
+                self._migrate()
+            except sqlite3.Error as exc:
+                post = _verdict(
+                    SchemaState.UNKNOWN, EXPECTED_SCHEMA_VERSION, None,
+                    f"bootstrap failed and the store is not ready: {exc}",
+                    admission_failure=f"{type(exc).__name__}: {exc}",
+                )
+                self.connection.close()
+                raise SchemaStateError(post) from exc
+            post = inspect_store(self.path)
+            if post.state is not SchemaState.COMPATIBLE:
+                post.evidence["admission_failure"] = (
+                    "bootstrap did not produce compatible state"
+                )
+                self.connection.close()
+                raise SchemaStateError(post)
+            return
+
+        ro = sqlite3.connect(f"file:{self.path.as_posix()}?mode=ro", uri=True)
+        try:
+            report = inspect_schema(ro)
+        finally:
+            ro.close()
+        admissible_through_mutation = (
+            SchemaState.COMPATIBLE, SchemaState.FRESH, SchemaState.MIGRATION_REQUIRED,
+        )
+        if report.state not in admissible_through_mutation:
+            raise SchemaStateError(report)
+
         self.connection = sqlite3.connect(self.path)
         self.connection.row_factory = sqlite3.Row
-        self._migrate()
+        if report.state in (SchemaState.FRESH, SchemaState.MIGRATION_REQUIRED):
+            # Genuinely fresh (zero tables) or older marked state (v1/v2):
+            # both are known-safe for the canonical additive _migrate(),
+            # which layers the current schema and advances the monotonic
+            # marker only through its guarded steps. Re-verified read-only
+            # below before the store is admitted.
+            try:
+                self._migrate()
+            except sqlite3.Error as exc:
+                post = _verdict(
+                    SchemaState.UNKNOWN, EXPECTED_SCHEMA_VERSION, None,
+                    f"bootstrap failed and the store is not ready: {exc}",
+                    admission_failure=f"{type(exc).__name__}: {exc}",
+                )
+                self.connection.close()
+                raise SchemaStateError(post) from exc
+            post = inspect_store(self.path)
+            if post.state is not SchemaState.COMPATIBLE:
+                post.evidence["admission_failure"] = (
+                    "bootstrap did not produce compatible state"
+                )
+                self.connection.close()
+                raise SchemaStateError(post)
 
     def close(self) -> None:
         self.connection.close()

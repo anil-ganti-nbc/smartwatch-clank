@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from .core.lock import RunLock, RunLockError
 from .core.qualification import ExecutionProvenance
 from .core.runner import RunProvenance, Runner
+from .core.schema_state import SchemaStateError
 from .core.store import SQLiteStore
 from .intelligence.samsung import persist_samsung_reconciliation, reconcile_samsung
 from .runtime_bridge import identity
@@ -69,6 +70,15 @@ class LocalCollectionController:
             message = "Collection completed; dashboard state refreshed." if result.healthy else (result.error or "Collection failed.")
             with self._guard: self._state.update(state=state, outcomes=payload, reconciliation=reconciliation,
                 message=message, finished_at=datetime.now(timezone.utc).isoformat())
+        except SchemaStateError as exc:
+            # M18: the compatibility barrier refuses before any collection
+            # runs; the evidence is recorded as the controller's outcome.
+            with self._guard:
+                self._state.update(
+                    state="failed", finished_at=datetime.now(timezone.utc).isoformat(),
+                    message=f"persistent-state compatibility refused: {exc}",
+                    outcomes=[exc.report.as_evidence()],
+                )
         except RunLockError:
             with self._guard: self._state.update(state="already_running", message="Another local collection is already running.", finished_at=datetime.now(timezone.utc).isoformat())
         except Exception as exc:
