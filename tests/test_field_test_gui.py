@@ -190,7 +190,10 @@ def test_run_one_rejects_non_finalized_collector_even_under_local_operator(monke
     thread = threading.Thread(target=server.serve_forever)
     thread.start()
     try:
-        status, body = _post(server, "/api/local-collection/run/garmin_catalogue")
+        # garmin_catalogue was promoted to PRODUCTION on 2026-09-05, so it is
+        # finalized now. The guard under test is unchanged and is proven with
+        # a name that is genuinely not in the finalized allowlist.
+        status, body = _post(server, "/api/local-collection/run/not_a_finalized_collector")
         assert status == 400
         assert "not_finalized" in body
     finally:

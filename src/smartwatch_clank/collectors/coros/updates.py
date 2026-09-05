@@ -49,7 +49,11 @@ def parse_affected_devices(article_title: str) -> tuple[str, ...]:
 
 class CorosUpdatesCollector(Collector):
     name = "coros_updates"
-    tier = CollectorTier.EXPERIMENTAL
+    # Promoted to PRODUCTION maturity 2026-09-05 by explicit operator
+    # decision (the soak/promotion queue was overridden, not re-run).
+    # Health and error history are unchanged and still reported
+    # independently of maturity.
+    tier = CollectorTier.PRODUCTION
 
     def __init__(self, client: HttpClient | None = None, sections_url: str = SECTIONS_URL) -> None:
         self.client = client or UrlLibHttpClient()

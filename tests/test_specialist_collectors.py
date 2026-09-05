@@ -42,7 +42,9 @@ def _collector(feed_text: str | None = None):
 
 def test_tier_and_name():
     c = _collector()
-    assert c.tier == CollectorTier.EXPERIMENTAL
+    # PRODUCTION since the 2026-08-30 promotion (this assertion had gone
+    # stale and was failing before the 2026-09-05 fleet promotion).
+    assert c.tier == CollectorTier.PRODUCTION
     assert c.name == "dcrainmaker_specialist"
 
 
@@ -53,7 +55,7 @@ def test_registration_in_default_registry():
     assert "dcrainmaker_specialist" in names
 
 
-def test_specialist_joins_experimental_scope_not_production():
+def test_specialist_is_production_scoped():
     from smartwatch_clank.collectors import default_registry
 
     registry = default_registry()
@@ -63,8 +65,9 @@ def test_specialist_joins_experimental_scope_not_production():
         ("samsung_product_catalogue", "samsung_support_in",
          "samsung_support_gb", "samsung_support_de"),
     )}
-    assert "dcrainmaker_specialist" in experimental
-    assert "dcrainmaker_specialist" not in production
+    # Promoted: it is a production collector and no longer in the
+    # experimental scope (which is empty fleet-wide as of 2026-09-05).
+    assert "dcrainmaker_specialist" not in experimental
 
 
 def test_fixture_classification_is_specialist_scoped():

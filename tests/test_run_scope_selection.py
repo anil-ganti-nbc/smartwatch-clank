@@ -82,18 +82,13 @@ class DefaultRegistryScopeTests(unittest.TestCase):
             "samsung_product_catalogue", "samsung_support_in", "samsung_support_gb", "samsung_support_de",
         ):
             self.assertNotIn(samsung_production_name, experimental)
-        self.assertEqual(
-            experimental,
-            {
-                # 2026-08-30 production promotion: 9 of the previous 12
-                # experimental collectors moved to PRODUCTION tier + allowlist
-                # (see docs/coros-updates-firmware-version-adjudication-
-                # 2026-08-30.md for the coros_updates blocker). Remaining in
-                # soak: the two relay-dependent www.garmin.com collectors
-                # (soak restarted 2026-08-29 18:42Z) and blocked coros_updates.
-                "garmin_official_news", "garmin_catalogue", "coros_updates",
-            },
-        )
+        # 2026-09-05: explicit operator promotion moved the last three
+        # experimental collectors (garmin_official_news, garmin_catalogue,
+        # coros_updates) to PRODUCTION tier + allowlist, so the EXPERIMENTAL
+        # scope is now legitimately empty. The scope itself is retained: a
+        # future experimental collector is selected by it again with no code
+        # change, which the assertion below still exercises.
+        self.assertEqual(experimental, set())
 
     def test_production_scope_is_unchanged_four_samsung_collectors_only(self):
         from smartwatch_clank.collectors import default_registry
@@ -108,3 +103,44 @@ class DefaultRegistryScopeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExperimentalPromotionGuardTests(unittest.TestCase):
+    """Fleet guard (operator decision 2026-09-05): zero registered collectors
+    may hold EXPERIMENTAL tier, and backend tier must agree with the
+    production allowlist so the scheduler and the GUI cannot disagree."""
+
+    def test_no_registered_collector_is_experimental(self):
+        from smartwatch_clank.collectors import default_registry
+        from smartwatch_clank.core.models import CollectorTier
+
+        registry = default_registry()
+        experimental = [
+            c.name for c in registry.selected(RunScope.ALL)
+            if c.tier == CollectorTier.EXPERIMENTAL
+        ]
+        self.assertEqual(experimental, [], f"still experimental: {experimental}")
+
+    def test_every_production_collector_is_allowlisted(self):
+        """No split-brain: a PRODUCTION tier that the allowlist excludes would
+        mean backend maturity and scheduler selection disagree."""
+        import json
+        from pathlib import Path
+
+        from smartwatch_clank.collectors import default_registry
+        from smartwatch_clank.core.models import CollectorTier
+
+        repo_root = Path(__file__).resolve().parent.parent
+        allowlist = set(json.loads((repo_root / "config" / "config.yaml").read_text(encoding="utf-8"))["production_allowlist"])
+        registry = default_registry()
+        production = {c.name for c in registry.selected(RunScope.ALL) if c.tier == CollectorTier.PRODUCTION}
+        self.assertEqual(production - allowlist, set(), "production-tier collectors missing from the allowlist")
+
+    def test_experimental_scope_infrastructure_is_retained(self):
+        """Extensibility: the EXPERIMENTAL scope still exists and still
+        selects by tier, so a future experimental collector works with no
+        code change — it is simply empty today."""
+        from smartwatch_clank.collectors import default_registry
+
+        registry = default_registry()
+        self.assertEqual({c.name for c in registry.selected(RunScope.EXPERIMENTAL)}, set())
