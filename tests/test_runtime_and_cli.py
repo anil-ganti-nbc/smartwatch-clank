@@ -16,7 +16,8 @@ class RuntimeAndCliTests(unittest.TestCase):
         self.assertEqual(result["service"], "smartwatch-clank")
         self.assertEqual(result["stage"], 2)
         self.assertTrue(result["live_collectors_enabled"])
-        self.assertFalse(result["notifications_enabled"])
+        self.assertTrue(result["notifications_enabled"])
+        self.assertEqual(result["notification_authority_state"], "durable_outbox_activation_gated")
 
     def test_production_cli_with_empty_registry(self):
         with tempfile.TemporaryDirectory() as directory:

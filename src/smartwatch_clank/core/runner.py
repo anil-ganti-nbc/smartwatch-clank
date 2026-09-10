@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import traceback
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 from .diff import diff_catalogues
 from .health import CatalogueHealthError, SourceHealthError, assess_catalogue
-from .models import CollectorTier, HealthRecord, RunOutcome, RunScope, utc_now
+from .models import CollectorTier, Discovery, HealthRecord, RunOutcome, RunScope, utc_now
 from .qualification import ExecutionProvenance, QualificationMaterial, normalize_provenance
 from .registry import CollectorRegistry
 from .store import SQLiteStore
@@ -43,11 +45,19 @@ class RunProvenance:
 
 class Runner:
     def __init__(self, registry: CollectorRegistry, store: SQLiteStore, config: RunnerConfig | None = None,
-                 provenance: RunProvenance | None = None) -> None:
+                 provenance: RunProvenance | None = None,
+                 notification_intent_factory: Callable[[Any], Callable[[Discovery, int], None] | None] | None = None) -> None:
         self.registry = registry
         self.store = store
         self.config = config or RunnerConfig()
         self.provenance = provenance or RunProvenance()
+        # Optional delivery wiring: given a collector, returns the
+        # persist-notification-intent callback for its discoveries, or None
+        # when that collector may not notify (tier/allowlist gate). The
+        # intent runs inside save_run's transaction, so the intent is durable
+        # exactly when its discovery is; the actual Discord POST happens
+        # only later, in a drain after the run has durably completed.
+        self.notification_intent_factory = notification_intent_factory
 
     def run(self, scope: RunScope, production_allowlist: tuple[str, ...] = (),
             run_metadata: dict | None = None) -> list[RunOutcome]:
@@ -108,6 +118,8 @@ class Runner:
             metadata = {**result.metadata}
             if run_metadata:
                 metadata["soak"] = run_metadata
+            intent = (self.notification_intent_factory(collector)
+                      if self.notification_intent_factory is not None else None)
             self.store.save_run(collector=collector.name, started_at=started, finished_at=finished, healthy=True,
                                 observations=result.observations, discoveries=discoveries,
                                 warning=assessment.warning, error=None, metadata=metadata,
@@ -117,7 +129,8 @@ class Runner:
                                 git_revision=self.provenance.git_revision,
                                 execution_provenance=self.provenance.trigger,
                                 qualification_epoch_id=epoch.epoch_id,
-                                material_identity=material.identity())
+                                material_identity=material.identity(),
+                                notification_intent=intent)
             self.store.record_qualification_terminal(
                 collector=collector.name, execution_id=run_uuid, epoch_id=epoch.epoch_id,
                 material=material, provenance=self.provenance.trigger, healthy=True,

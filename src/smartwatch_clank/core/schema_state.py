@@ -43,7 +43,7 @@ from pathlib import Path
 # The expected persistent-state contract of THIS software version. Single
 # source of truth; `SQLiteStore.SCHEMA_VERSION` re-exports it so the schema,
 # the migration stamp, and the compatibility gate cannot drift apart.
-EXPECTED_SCHEMA_VERSION = 3
+EXPECTED_SCHEMA_VERSION = 4
 
 SCHEMA_VERSION_TABLE = "schema_version"
 
@@ -56,7 +56,7 @@ EXPECTED_TABLES: frozenset[str] = frozenset({
     "source_onboarding", "prelaunch_candidates", "samsung_candidate_events",
     "soak_state", "soak_host_migrations", SCHEMA_VERSION_TABLE,
     "evidence_records", "evidence_timeline", "qualification_epochs",
-    "qualification_events",
+    "qualification_events", "notifications", "delivery_policy",
 })
 
 # Required columns of `runs` — the only table the additive migration

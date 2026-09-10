@@ -12,3 +12,7 @@ config/local.yaml
 .claude/
 logs/
 backups/
+
+# Compose env substitutions live next to the compose file on the host
+# (may carry the Discord webhook URL). Never commit.
+.env

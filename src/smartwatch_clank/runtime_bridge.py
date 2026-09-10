@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 
 from . import __version__
 from .core.store import SQLiteStore
+from .notifications.discord import DISCORD_WEBHOOK_ENV
 
 
 def _source_revision() -> str:
@@ -38,17 +39,20 @@ class RuntimeIdentity:
     source_revision: str
     source_revision_short: str
     schema_version: int
-    notification_authority_state: str = "unsupported_by_policy"
+    notification_authority_state: str = "durable_outbox_activation_gated"
     notification_authority_evidence: str = (
-        "notifications/discord.py DiscordNotifier.notify raises NotImplementedError; "
-        "SMARTWATCH_CLANK_DEFINITION_OF_DONE.md documents deliberate absence"
+        "notifications/discord.py DiscordNotifier: persistence-first outbox "
+        "(notification intent commits with its discovery), activation cutoff in "
+        "delivery_policy (discoveries predating it are held), durable 429 retry "
+        "floors, bounded redacted errors; the webhook URL is read only from "
+        f"{DISCORD_WEBHOOK_ENV} at send time and delivery is fully nonfatal to collection"
     )
-    soak_notification_policy: str = "suppressed_by_structure"
+    soak_notification_policy: str = "editorial_gate_critical_newsworthy_only"
 
 
 def identity() -> dict[str, object]:
     return asdict(RuntimeIdentity(
-        "smartwatch-clank", __version__, sys.version.split()[0], platform.platform(), 2, True, False,
+        "smartwatch-clank", __version__, sys.version.split()[0], platform.platform(), 2, True, True,
         _source_revision(), _source_revision_short(), SQLiteStore.SCHEMA_VERSION,
     ))
 

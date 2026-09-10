@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+from collections.abc import Callable
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -246,6 +247,22 @@ class SQLiteStore:
             );
             CREATE INDEX IF NOT EXISTS idx_qualification_events_epoch
                 ON qualification_events(collector, epoch_id, event_type, id);
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY, provider TEXT NOT NULL, dedup_key TEXT NOT NULL,
+                discovery_id INTEGER, collector TEXT, identity TEXT, discovered_at TEXT,
+                payload_json TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('pending','sent','failed','held')),
+                attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT, http_status INTEGER,
+                not_before TEXT, last_attempt_at TEXT, sent_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(provider, dedup_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_notifications_status
+                ON notifications(provider, status, id);
+            CREATE TABLE IF NOT EXISTS delivery_policy (
+                key TEXT PRIMARY KEY, value TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
         """)
         columns = {row[1] for row in self.connection.execute("PRAGMA table_info(runs)")}
         if "metadata_json" not in columns:
@@ -475,7 +492,8 @@ class SQLiteStore:
                  run_uuid: str | None = None, app_version: str | None = None,
                  schema_version_at_run: int | None = None, config_fingerprint: str | None = None,
                  git_revision: str | None = None, execution_provenance: ExecutionProvenance | str | None = None,
-                 qualification_epoch_id: str | None = None, material_identity: str | None = None) -> int:
+                 qualification_epoch_id: str | None = None, material_identity: str | None = None,
+                 notification_intent: Callable[[Discovery, int], None] | None = None) -> int:
         trigger = normalize_provenance(execution_provenance)
         with self.connection:
             cursor = self.connection.execute(
@@ -496,13 +514,18 @@ class SQLiteStore:
                         (run_id, collector, item.identity, item.observed_at.isoformat(), item.source_url, _json(asdict(item))),
                     )
                 for item in discoveries:
-                    self.connection.execute(
+                    cursor = self.connection.execute(
                         "INSERT INTO discoveries(run_id,collector,identity,change_type,confidence,editorial_level,source_url,discovered_at,previous_json,current_json,evidence_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                         (run_id, collector, item.identity, item.change_type.value, item.confidence.value,
                          item.editorial_level.value, item.source_url, item.discovered_at.isoformat(),
                          _json(item.previous) if item.previous is not None else None,
                          _json(item.current) if item.current is not None else None, _json(item.evidence)),
                     )
+                    # Same transaction as the discovery insert: the
+                    # notification intent is durable exactly when the
+                    # discovery it describes is (persist-before-send).
+                    if notification_intent is not None:
+                        notification_intent(item, int(cursor.lastrowid))
             return run_id
 
     def save_health(self, record: HealthRecord) -> None:
@@ -569,6 +592,110 @@ class SQLiteStore:
     def schema_version(self) -> int:
         row = self.connection.execute("SELECT version FROM schema_version WHERE id=1").fetchone()
         return int(row["version"]) if row else 0
+
+    # -- notification outbox (durable, persistence-first delivery) -------
+
+    def notification_put(self, provider: str, dedup_key: str, payload: dict, *,
+                         discovery_id: int | None = None, collector: str | None = None,
+                         identity: str | None = None, discovered_at: str | None = None,
+                         status: str = "pending") -> None:
+        """INSERT OR IGNORE on UNIQUE(provider, dedup_key): re-enqueuing the
+        same discovery (a rerun, a restarted process) never creates a second
+        notification row. Deliberately transaction-neutral: this runs inside
+        the caller's transaction (save_run's), so the intent commits exactly
+        when the discovery it describes does."""
+        self.connection.execute(
+            "INSERT OR IGNORE INTO notifications(provider,dedup_key,discovery_id,collector,"
+            "identity,discovered_at,payload_json,status) VALUES(?,?,?,?,?,?,?,?)",
+            (provider, dedup_key, discovery_id, collector, identity, discovered_at,
+             _json(payload), status),
+        )
+
+    def notification_by_dedup_key(self, provider: str, dedup_key: str) -> sqlite3.Row | None:
+        return self.connection.execute(
+            "SELECT * FROM notifications WHERE provider=? AND dedup_key=?", (provider, dedup_key),
+        ).fetchone()
+
+    def pending_notifications(self, provider: str) -> list[sqlite3.Row]:
+        return self.connection.execute(
+            "SELECT * FROM notifications WHERE provider=? AND status='pending' ORDER BY id",
+            (provider,),
+        ).fetchall()
+
+    def notifications_by_status(self, provider: str, status: str, limit: int) -> list[sqlite3.Row]:
+        return self.connection.execute(
+            "SELECT * FROM notifications WHERE provider=? AND status=? ORDER BY id DESC LIMIT ?",
+            (provider, status, limit),
+        ).fetchall()
+
+    def notification_counts(self, provider: str | None = None) -> dict[str, int]:
+        clause, params = ("WHERE provider=?", (provider,)) if provider else ("", ())
+        return {
+            row["status"]: row["c"] for row in self.connection.execute(
+                f"SELECT status, COUNT(*) c FROM notifications {clause} GROUP BY status", params,
+            ).fetchall()
+        }
+
+    def mark_notification(self, notification_id: int, status: str, error: str | None = None,
+                          http_status: int | None = None, *, count_attempt: bool = True) -> None:
+        with self.connection:
+            self.connection.execute(
+                "UPDATE notifications SET status=?, last_error=?, http_status=?, "
+                "attempts=attempts+?, last_attempt_at=?, "
+                "sent_at=CASE WHEN ?='sent' THEN ? ELSE sent_at END WHERE id=?",
+                (status, error, http_status, 1 if count_attempt else 0,
+                 datetime.now(timezone.utc).isoformat(), status,
+                 datetime.now(timezone.utc).isoformat(), notification_id),
+            )
+
+    def defer_notification(self, notification_id: int, not_before_iso: str) -> None:
+        """Set a durable retry floor without touching status or attempts.
+
+        Used for HTTP 429: the row stays `pending` and un-penalised, but no
+        drain (this process or any later one) will pick it up until the
+        rate-limit window has passed."""
+        with self.connection:
+            self.connection.execute(
+                "UPDATE notifications SET not_before=? WHERE id=?",
+                (not_before_iso, notification_id),
+            )
+
+    def requeue_failed_notifications(self, provider: str) -> int:
+        with self.connection:
+            cursor = self.connection.execute(
+                "UPDATE notifications SET status='pending', attempts=0, last_error=NULL, "
+                "http_status=NULL, not_before=NULL WHERE provider=? AND status='failed'",
+                (provider,),
+            )
+        return cursor.rowcount
+
+    def provenance_gap_counts(self, provider: str) -> dict[str, int]:
+        """Rows whose discovery link cannot be trusted, for diagnostics."""
+        null_id = self.connection.execute(
+            "SELECT COUNT(*) FROM notifications WHERE provider=? AND discovery_id IS NULL",
+            (provider,),
+        ).fetchone()[0]
+        orphaned = self.connection.execute(
+            "SELECT COUNT(*) FROM notifications n LEFT JOIN discoveries d ON d.id = n.discovery_id "
+            "WHERE n.provider=? AND n.discovery_id IS NOT NULL AND d.id IS NULL", (provider,),
+        ).fetchone()[0]
+        return {"null_discovery_id": null_id, "orphaned_discovery_id": orphaned}
+
+    # -- delivery policy (durable activation cutoff) ----------------------
+
+    def policy_get(self, key: str) -> str | None:
+        row = self.connection.execute(
+            "SELECT value FROM delivery_policy WHERE key=?", (key,),
+        ).fetchone()
+        return row["value"] if row is not None else None
+
+    def policy_set(self, key: str, value: str) -> None:
+        with self.connection:
+            self.connection.execute(
+                "INSERT INTO delivery_policy(key,value,updated_at) VALUES(?,?,datetime('now')) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+                (key, value),
+            )
 
     def counts(self) -> dict[str, int]:
         return {table: self.connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]

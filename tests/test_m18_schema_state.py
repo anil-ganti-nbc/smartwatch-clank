@@ -129,14 +129,14 @@ class FreshAndCompatibleTests(unittest.TestCase):
         self.assertIs(report.state, SchemaState.COMPATIBLE)
         self.assertEqual(report.observed_version, EXPECTED_SCHEMA_VERSION)
 
-    def test_4_expected_v3_state_is_compatible(self):
+    def test_4_expected_v4_state_is_compatible(self):
         db = self.dir / "current.db"
         SQLiteStore(db).close()
         store = SQLiteStore(db)
         try:
             report = inspect_store(db)
             self.assertIs(report.state, SchemaState.COMPATIBLE)
-            self.assertEqual(report.observed_version, 3)
+            self.assertEqual(report.observed_version, EXPECTED_SCHEMA_VERSION)
         finally:
             store.close()
 
@@ -171,7 +171,7 @@ class OlderStateTests(unittest.TestCase):
             self.assertIsNone(row["execution_provenance"])
             self.assertIsNone(row["qualification_epoch_id"])
             self.assertIsNone(row["material_identity"])
-            self.assertEqual(store.schema_version(), 3)
+            self.assertEqual(store.schema_version(), EXPECTED_SCHEMA_VERSION)
             self.assertEqual(
                 store.connection.execute("SELECT COUNT(*) FROM runs").fetchone()[0], 1
             )
@@ -185,7 +185,7 @@ class OlderStateTests(unittest.TestCase):
         self.assertEqual(report.observed_version, 1)
         store = SQLiteStore(db)
         try:
-            self.assertEqual(store.schema_version(), 3)
+            self.assertEqual(store.schema_version(), EXPECTED_SCHEMA_VERSION)
         finally:
             store.close()
 
@@ -222,7 +222,7 @@ class OlderStateTests(unittest.TestCase):
         self.assertIs(report.state, SchemaState.MIGRATION_REQUIRED)
         store = SQLiteStore(db)
         try:
-            self.assertEqual(store.schema_version(), 3)
+            self.assertEqual(store.schema_version(), EXPECTED_SCHEMA_VERSION)
         finally:
             store.close()
 
@@ -235,11 +235,11 @@ class RefusalTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def test_9_newer_v4_state_fails_closed(self):
+    def test_9_newer_than_expected_state_fails_closed(self):
         db = self.dir / "newer.db"
         SQLiteStore(db).close()
         con = _con(db)
-        con.execute("UPDATE schema_version SET version = 4")
+        con.execute("UPDATE schema_version SET version = ?", (EXPECTED_SCHEMA_VERSION + 1,))
         con.commit()
         con.close()
         before = _sha(db)
@@ -247,13 +247,13 @@ class RefusalTests(unittest.TestCase):
             SQLiteStore(db)
         report = ctx.exception.report
         self.assertIs(report.state, SchemaState.INCOMPATIBLE_NEWER)
-        self.assertEqual(report.observed_version, 4)
+        self.assertEqual(report.observed_version, EXPECTED_SCHEMA_VERSION + 1)
         self.assertIn("FORWARD_ONLY_EXPLICIT", report.reason)
         json.dumps(report.as_evidence())  # JSON-serializable evidence
         self.assertEqual(_sha(db), before)  # byte-identical refusal
         con = _con(db)
         self.assertEqual(
-            con.execute("SELECT MAX(version) FROM schema_version").fetchone()[0], 4
+            con.execute("SELECT MAX(version) FROM schema_version").fetchone()[0], EXPECTED_SCHEMA_VERSION + 1
         )
         con.close()
 
@@ -328,19 +328,19 @@ class RefusalTests(unittest.TestCase):
             SQLiteStore(db)
 
     def test_22_older_software_newer_state_rejected(self):
-        self.assertEqual(EXPECTED_SCHEMA_VERSION, 3)
+        self.assertEqual(EXPECTED_SCHEMA_VERSION, 4)
         self.assertIn(SchemaState.INCOMPATIBLE_NEWER, UNADMITTABLE_STATES)
         # the marker never decreases (monotonic authority), and newer state
         # is refused rather than silently tolerated
         db = self.dir / "newer.db"
         SQLiteStore(db).close()
         con = _con(db)
-        con.execute("UPDATE schema_version SET version = 5")
+        con.execute("UPDATE schema_version SET version = ?", (EXPECTED_SCHEMA_VERSION + 1,))
         con.commit()
         con.close()
         with self.assertRaises(SchemaStateError) as ctx:
             SQLiteStore(db)
-        self.assertEqual(ctx.exception.report.observed_version, 5)
+        self.assertEqual(ctx.exception.report.observed_version, EXPECTED_SCHEMA_VERSION + 1)
 
 
 class InspectionPurityTests(unittest.TestCase):

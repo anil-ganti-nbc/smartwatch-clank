@@ -13,6 +13,7 @@ from smartwatch_clank.core.qualification import (
 )
 from smartwatch_clank.core.registry import CollectorRegistry
 from smartwatch_clank.core.runner import RunProvenance, Runner
+from smartwatch_clank.core.schema_state import EXPECTED_SCHEMA_VERSION
 from smartwatch_clank.core.store import SQLiteStore
 from tests.helpers import DummyCollector, observation
 
@@ -230,7 +231,7 @@ class QualificationTests(unittest.TestCase):
         self.assertIsNone(row["execution_provenance"])
         self.assertIsNone(row["qualification_epoch_id"])
         self.assertIsNone(row["material_identity"])
-        self.assertEqual(self.store.schema_version(), 3)
+        self.assertEqual(self.store.schema_version(), EXPECTED_SCHEMA_VERSION)
         self.assertEqual(self.store.connection.execute("SELECT COUNT(*) FROM runs").fetchone()[0], 1)
 
 

@@ -29,6 +29,12 @@ services:
       # this variable at all. host.docker.internal needs the extra_hosts
       # entry below; without it this would just be an unreachable address.
       SMARTWATCH_CLANK_GARMIN_PROXY: ${SMARTWATCH_CLANK_GARMIN_PROXY:-}
+      # Delivery plumbing for the Discord notification outbox. The secret
+      # itself lives in an untracked .env file next to this compose file
+      # (never in Git, never in the image); notifications/discord degrades
+      # nonfatally to "no webhook configured" while it is unset, so this
+      # passthrough is safe to ship before the operator creates the secret.
+      SMARTWATCH_CLANK_DISCORD_WEBHOOK_URL: ${SMARTWATCH_CLANK_DISCORD_WEBHOOK_URL:-}
     extra_hosts:
       # host-gateway resolves to the Docker bridge gateway IP, not
       # loopback -- the relay tunnel itself binds Hetzner's loopback
