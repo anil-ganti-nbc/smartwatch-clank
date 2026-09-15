@@ -8,7 +8,18 @@
 
 Smartwatch Clank is an independently runnable intelligence collector for connected wrist-worn computing devices. It stores durable source observations, computes deterministic changes, and protects editorial alerts from broken collectors.
 
-Stage 2.2 enables controlled production observation for the Samsung product catalogue and independently isolated India/UK/Germany support collectors. Discord delivery is implemented as a persistence-first outbox (notifications/discord.py): an eligible discovery and its notification intent commit together, and a drain sends only after the run has durably completed. Delivery is gated by a durable activation cutoff (discoveries predating it are held), an editorial gate (CRITICAL/NEWSWORTHY only; MONITOR/NOISE stay dashboard/QC-only), and a production-tier/allowlist gate. The webhook URL lives only in SMARTWATCH_CLANK_DISCORD_WEBHOOK_URL; with it unset, delivery is nonfatally inert. See docs/DISCORD_ACTIVATION_RUNBOOK.md.
+Stage 2.2 enables controlled production observation. As of the 2026-09-15
+policy alignment, exactly 13 collectors remain production-selected;
+`coros_updates`, `garmin_catalogue`, and `garmin_official_news` are retained as
+EXPERIMENTAL because their production qualification/soak is incomplete.
+Discord delivery is implemented as a persistence-first outbox
+(notifications/discord.py): an eligible discovery and its notification intent
+commit together, and a drain sends only after the run has durably completed.
+Delivery is gated by a durable activation cutoff (discoveries predating it are
+held), an editorial gate (CRITICAL/NEWSWORTHY only; MONITOR/NOISE stay
+dashboard/QC-only), and a production-tier/allowlist gate. The webhook URL lives
+only in SMARTWATCH_CLANK_DISCORD_WEBHOOK_URL; with it unset, delivery is
+nonfatally inert. See docs/DISCORD_ACTIVATION_RUNBOOK.md.
 
 ## Quick start
 
