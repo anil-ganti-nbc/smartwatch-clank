@@ -49,11 +49,10 @@ def parse_affected_devices(article_title: str) -> tuple[str, ...]:
 
 class CorosUpdatesCollector(Collector):
     name = "coros_updates"
-    # Promoted to PRODUCTION maturity 2026-09-05 by explicit operator
-    # decision (the soak/promotion queue was overridden, not re-run).
-    # Health and error history are unchanged and still reported
-    # independently of maturity.
-    tier = CollectorTier.PRODUCTION
+    # Policy alignment 2026-09-15: the source is not production-qualified.
+    # Its historical evidence and unresolved firmware-novelty adjudication
+    # remain intact; qualification requires a fresh bounded soak.
+    tier = CollectorTier.EXPERIMENTAL
 
     def __init__(self, client: HttpClient | None = None, sections_url: str = SECTIONS_URL) -> None:
         self.client = client or UrlLibHttpClient()

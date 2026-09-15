@@ -145,11 +145,10 @@ def _save_cache(path: Path, cache: dict[str, dict]) -> None:
 
 class GarminCatalogueCollector(Collector):
     name = "garmin_catalogue"
-    # Promoted to PRODUCTION maturity 2026-09-05 by explicit operator
-    # decision (the soak/promotion queue was overridden, not re-run).
-    # Health and error history are unchanged and still reported
-    # independently of maturity.
-    tier = CollectorTier.PRODUCTION
+    # Policy alignment 2026-09-15: production qualification is incomplete.
+    # Preserve the collector and its evidence while a safe Garmin relay path
+    # and a fresh bounded soak remain unproven.
+    tier = CollectorTier.EXPERIMENTAL
 
     def __init__(self, client: HttpClient | None = None, sitemap_url: str = SITEMAP_URL,
                  cache_path: Path | None = None, max_workers: int = 8) -> None:

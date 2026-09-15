@@ -8,11 +8,10 @@ FEED_URL = "https://www.garmin.com/en-US/newsroom/feed/"
 
 
 class GarminOfficialNewsCollector(OfficialNewsCollector):
-    # Promoted to PRODUCTION maturity 2026-09-05 by explicit operator
-    # decision (the soak/promotion queue was overridden, not re-run).
-    # Health and error history are unchanged and still reported
-    # independently of maturity.
-    tier = CollectorTier.PRODUCTION
+    # Policy alignment 2026-09-15: production qualification is incomplete.
+    # Preserve the collector and its evidence while a safe Garmin relay path
+    # and a fresh bounded soak remain unproven.
+    tier = CollectorTier.EXPERIMENTAL
 
     def __init__(self, client: HttpClient | None = None) -> None:
         super().__init__(oem="garmin", feed_url=FEED_URL, name="garmin_official_news", client=client)
