@@ -21,7 +21,7 @@ FROM python:3.12-slim-bookworm@sha256:a116514e19457bcb7af7efe9c3dd0b9b71e85b3176
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --only-upgrade ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && dpkg --compare-versions "$(dpkg-query -W -f '$${Version}' ca-certificates)" ge '20250419~deb12u2'
+    && dpkg --compare-versions "$(dpkg-query -W ca-certificates | cut -f2)" ge '20250419~deb12u2'
 
 ARG GIT_REVISION=unknown
 LABEL clank.id="smartwatch-clank" \
