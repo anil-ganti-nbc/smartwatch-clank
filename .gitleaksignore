@@ -1,0 +1,14 @@
+# Public Amazon affiliate SubscriptionId in the DC Rainmaker RSS fixture.
+# Not a project secret. Exact aws-access-token fingerprints only.
+# Git history (introducing commit):
+7ed4d74291deb54306c970bf3d5c8553ba558232:tests/fixtures/specialists/dcrainmaker_feed.xml:aws-access-token:491
+7ed4d74291deb54306c970bf3d5c8553ba558232:tests/fixtures/specialists/dcrainmaker_feed.xml:aws-access-token:751
+7ed4d74291deb54306c970bf3d5c8553ba558232:tests/fixtures/specialists/dcrainmaker_feed.xml:aws-access-token:1018
+7ed4d74291deb54306c970bf3d5c8553ba558232:tests/fixtures/specialists/dcrainmaker_feed.xml:aws-access-token:1406
+7ed4d74291deb54306c970bf3d5c8553ba558232:tests/fixtures/specialists/dcrainmaker_feed.xml:aws-access-token:1495
+# Working tree (`gitleaks dir` fingerprints omit the commit):
+tests/fixtures/specialists/dcrainmaker_feed.xml:aws-access-token:491
+tests/fixtures/specialists/dcrainmaker_feed.xml:aws-access-token:751
+tests/fixtures/specialists/dcrainmaker_feed.xml:aws-access-token:1018
+tests/fixtures/specialists/dcrainmaker_feed.xml:aws-access-token:1406
+tests/fixtures/specialists/dcrainmaker_feed.xml:aws-access-token:1495
